@@ -3,10 +3,10 @@ import * as XLSX from "xlsx";
 import { db } from "./firebase";
 import {
   collection, doc, onSnapshot,
-  addDoc, deleteDoc, setDoc
+  addDoc, deleteDoc, setDoc, getDocs
 } from "firebase/firestore";
 
-// ── 預設分類 ─────────────────────────────────────────
+// ── 預設分類 (當資料庫沒資料時使用) ─────────────────────────────────────────
 const DEFAULT_CATEGORIES = [
   { id: "food", label: "餐飲", icon: "🍜", img: null, sub: [
     { id: "food-eat",   label: "外食", icon: "🍱", img: null },
@@ -55,7 +55,7 @@ const PAYMENT_METHODS = [
   { id: "transfer", label: "轉帳",   icon: "🏦" },
 ];
 
-const DEFAULT_THEME = {
+const THEME = {
   bg:          "#F7F4EF",
   headerBg:    "#FFFFFF",
   card:        "#FFFFFF",
@@ -70,6 +70,7 @@ const DEFAULT_THEME = {
   tagText:     "#7C9E87",
 };
 
+// ── 工具函式 ─────────────────────────────────────────
 function today() { return new Date().toISOString().slice(0, 10); }
 function fmt(n)  { return "NT$ " + Number(n).toLocaleString(); }
 function uid()   { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
@@ -92,7 +93,7 @@ function Tag({ children, color, bg }) {
 // ══════════════════════════════════════════════════════
 // 計算機
 // ══════════════════════════════════════════════════════
-function Calculator({ initial="", calcIcon, theme, onConfirm, onClose }) {
+function Calculator({ initial="", theme, onConfirm, onClose }) {
   const [expr, setExpr] = useState(initial ? String(initial) : "");
   const [disp, setDisp] = useState(initial ? String(initial) : "0");
   const T = theme;
@@ -103,7 +104,6 @@ function Calculator({ initial="", calcIcon, theme, onConfirm, onClose }) {
     if (v==="=")  {
       try {
         const safe=expr.replace(/[^0-9+\-*/().]/g,"");
-        // eslint-disable-next-line no-new-func
         const r=Math.round(Function('"use strict";return('+safe+')')() * 100)/100;
         setDisp(String(r)); setExpr(String(r));
       } catch { setDisp("錯誤"); }
@@ -148,58 +148,11 @@ function Calculator({ initial="", calcIcon, theme, onConfirm, onClose }) {
 }
 
 // ══════════════════════════════════════════════════════
-// 主題設定區塊
+// 設定頁 (已移除主題設定)
 // ══════════════════════════════════════════════════════
-function ThemeSection({ theme, setTheme }) {
+function SettingsTab({ categories, setCategories, calcIcon, setCalcIcon, theme }) {
   const T = theme;
-  const fields = [
-    { key:"bg",          label:"背景底色" },
-    { key:"headerBg",    label:"Header 頂部背景" },
-    { key:"card",        label:"卡片背景色" },
-    { key:"accent",      label:"主要按鈕顏色" },
-    { key:"accentLight", label:"按鈕淡色背景" },
-    { key:"warm",        label:"付款標籤顏色" },
-    { key:"warmLight",   label:"付款標籤背景" },
-    { key:"tagBg",       label:"分類標籤背景" },
-    { key:"tagText",     label:"分類標籤文字" },
-    { key:"ink",         label:"主要文字顏色" },
-    { key:"muted",       label:"次要文字顏色" },
-    { key:"border",      label:"邊框顏色" },
-  ];
-
-  return (
-    <div>
-      <div style={{ fontSize:13,fontWeight:700,color:T.ink,marginBottom:4 }}>佈景主題顏色</div>
-      <div style={{ fontSize:11,color:T.muted,marginBottom:12 }}>點右側色塊直接選色，即時預覽效果</div>
-      <div style={{ background:T.card,borderRadius:14,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,0.04)" }}>
-        {fields.map((f,i)=>(
-          <div key={f.key} style={{ display:"flex",alignItems:"center",justifyContent:"space-between",padding:"11px 14px",borderBottom:i<fields.length-1?`1px solid ${T.border}`:"none" }}>
-            <span style={{ fontSize:13,color:T.ink }}>{f.label}</span>
-            <div style={{ display:"flex",alignItems:"center",gap:8 }}>
-              <span style={{ fontSize:11,color:T.muted,fontFamily:"monospace" }}>{T[f.key]}</span>
-              <label style={{ position:"relative",cursor:"pointer",display:"flex" }}>
-                <div style={{ width:30,height:30,borderRadius:8,background:T[f.key],border:`2px solid ${T.border}`,cursor:"pointer",boxShadow:"0 1px 3px rgba(0,0,0,0.12)" }} />
-                <input type="color" value={T[f.key]} onChange={e=>setTheme(t=>({...t,[f.key]:e.target.value}))}
-                  style={{ position:"absolute",opacity:0,width:"100%",height:"100%",top:0,left:0,cursor:"pointer" }} />
-              </label>
-            </div>
-          </div>
-        ))}
-      </div>
-      <button onClick={()=>setTheme(DEFAULT_THEME)}
-        style={{ width:"100%",marginTop:10,padding:"11px",background:"none",color:T.muted,border:`1.5px solid ${T.border}`,borderRadius:12,fontSize:13,cursor:"pointer",fontFamily:"inherit" }}>
-        ↺ 重置為預設顏色
-      </button>
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════════════════
-// 設定頁
-// ══════════════════════════════════════════════════════
-function SettingsTab({ categories, setCategories, calcIcon, setCalcIcon, theme, setTheme }) {
-  const T = theme;
-  const [section,      setSection]      = useState("theme");
+  const [section,      setSection]      = useState("cats");
   const [expandedMain, setExpandedMain] = useState(null);
   const [editMain,     setEditMain]     = useState(null);
   const [editSub,      setEditSub]      = useState(null);
@@ -209,20 +162,41 @@ function SettingsTab({ categories, setCategories, calcIcon, setCalcIcon, theme, 
   const subImgRef  = useRef(null);
   const calcImgRef = useRef(null);
 
-  function saveMain() {
+  // 輔助函式：同步更新到 Firebase (修正重新整理恢復原貌的問題)
+  const syncToFirebase = async (newCats) => {
+    setCategories(newCats);
+    for (const cat of newCats) {
+      await setDoc(doc(db, "categories", cat.id), cat);
+    }
+  };
+
+  async function saveMain() {
     if (!draftMain.label.trim()) return;
-    if (editMain==="new") setCategories(p=>[...p,{id:uid(),label:draftMain.label.trim(),icon:draftMain.icon||"✦",img:draftMain.img,sub:[]}]);
-    else setCategories(p=>p.map(c=>c.id===editMain?{...c,...draftMain}:c));
+    let newCats;
+    if (editMain==="new") {
+        newCats = [...categories,{id:uid(),label:draftMain.label.trim(),icon:draftMain.icon||"✦",img:draftMain.img,sub:[]}];
+    } else {
+        newCats = categories.map(c=>c.id===editMain?{...c,...draftMain}:c);
+    }
+    await syncToFirebase(newCats);
     setEditMain(null);
   }
-  function saveSub() {
+
+  async function saveSub() {
     if (!draftSub.label.trim()) return;
-    setCategories(p=>p.map(c=>{
+    const newCats = categories.map(c=>{
       if(c.id!==editSub.mainId) return c;
       if(editSub.subId==="new") return {...c,sub:[...c.sub,{id:uid(),label:draftSub.label.trim(),icon:draftSub.icon||"✦",img:draftSub.img}]};
       return {...c,sub:c.sub.map(s=>s.id===editSub.subId?{...s,...draftSub}:s)};
-    }));
+    });
+    await syncToFirebase(newCats);
     setEditSub(null);
+  }
+
+  async function deleteCat(id) {
+    const newCats = categories.filter(c=>c.id!==id);
+    setCategories(newCats);
+    await deleteDoc(doc(db, "categories", id));
   }
 
   const iSt = { width:"100%",padding:"9px 12px",borderRadius:10,border:`1.5px solid ${T.border}`,fontSize:13,color:T.ink,outline:"none",background:T.bg,boxSizing:"border-box",fontFamily:"inherit" };
@@ -231,15 +205,13 @@ function SettingsTab({ categories, setCategories, calcIcon, setCalcIcon, theme, 
   return (
     <div>
       <div style={{ display:"flex",gap:6,marginBottom:16 }}>
-        {[["theme","🎨 主題"],["calc","🧮 計算機"],["cats","📂 分類"]].map(([k,l])=>(
+        {[["cats","📂 分類管理"],["calc","🧮 計算機按鈕"]].map(([k,l])=>(
           <button key={k} onClick={()=>setSection(k)}
             style={{ flex:1,padding:"9px 4px",borderRadius:10,border:`1.5px solid ${section===k?T.accent:T.border}`,background:section===k?T.accent+"18":"#fff",color:section===k?T.accent:T.muted,fontSize:12,fontWeight:section===k?700:500,cursor:"pointer",fontFamily:"inherit" }}>
             {l}
           </button>
         ))}
       </div>
-
-      {section==="theme" && <ThemeSection theme={T} setTheme={setTheme} />}
 
       {section==="calc" && (
         <div>
@@ -287,7 +259,7 @@ function SettingsTab({ categories, setCategories, calcIcon, setCalcIcon, theme, 
                   <span style={{ flex:1,fontSize:14,fontWeight:600,color:T.ink }}>{cat.label}</span>
                   <span style={{ fontSize:11,color:T.muted,marginRight:4 }}>{cat.sub.length} 小類</span>
                   <button onClick={e=>{ e.stopPropagation(); setEditMain(cat.id); setDraftMain({label:cat.label,icon:cat.icon,img:cat.img||null}); }} style={{ ...bSt("none",T.accent),border:`1px solid ${T.accent}`,padding:"3px 9px" }}>編輯</button>
-                  <button onClick={e=>{ e.stopPropagation(); setCategories(p=>p.filter(c=>c.id!==cat.id)); }} style={{ ...bSt("none",T.muted),border:`1px solid ${T.border}`,padding:"3px 9px" }}>刪除</button>
+                  <button onClick={e=>{ e.stopPropagation(); deleteCat(cat.id); }} style={{ ...bSt("none",T.muted),border:`1px solid ${T.border}`,padding:"3px 9px" }}>刪除</button>
                   <span style={{ fontSize:12,color:T.muted }}>{expandedMain===cat.id?"▲":"▼"}</span>
                 </div>
               )}
@@ -319,7 +291,10 @@ function SettingsTab({ categories, setCategories, calcIcon, setCalcIcon, theme, 
                           <CatThumb item={sub} size={14} box={28} accentLight={T.accentLight} />
                           <span style={{ flex:1,fontSize:13,color:T.ink }}>{sub.label}</span>
                           <button onClick={()=>{ setEditSub({mainId:cat.id,subId:sub.id}); setDraftSub({label:sub.label,icon:sub.icon,img:sub.img||null}); }} style={{ ...bSt("none",T.accent),border:`1px solid ${T.accent}`,padding:"2px 8px",fontSize:11 }}>編輯</button>
-                          <button onClick={()=>setCategories(p=>p.map(c=>c.id===cat.id?{...c,sub:c.sub.filter(s=>s.id!==sub.id)}:c))} style={{ ...bSt("none",T.muted),border:`1px solid ${T.border}`,padding:"2px 8px",fontSize:11 }}>刪除</button>
+                          <button onClick={()=>{
+                              const newCats = categories.map(c=>c.id===cat.id?{...c,sub:c.sub.filter(s=>s.id!==sub.id)}:c);
+                              syncToFirebase(newCats);
+                          }} style={{ ...bSt("none",T.muted),border:`1px solid ${T.border}`,padding:"2px 8px",fontSize:11 }}>刪除</button>
                         </div>
                       )}
                     </div>
@@ -390,7 +365,6 @@ export default function App() {
   const [records,     setRecords]     = useState([]);
   const [categories,  setCategories]  = useState(DEFAULT_CATEGORIES);
   const [calcIcon,    setCalcIcon]    = useState({ emoji:"🧮", img:null });
-  const [theme,       setTheme]       = useState(DEFAULT_THEME);
   const [footerImg,   setFooterImg]   = useState(null);
   const [loading,     setLoading]     = useState(true);
   const [tab,         setTab]         = useState("home");
@@ -401,19 +375,34 @@ export default function App() {
   const [filterMonth, setFilterMonth] = useState(today().slice(0,7));
 
   const payMap = Object.fromEntries(PAYMENT_METHODS.map(p=>[p.id,p]));
-  const T = theme;
+  const T = THEME; 
 
   // ── Firebase 讀取 ──
-  useEffect(()=>{ const u=onSnapshot(collection(db,"records"),snap=>{ setRecords(snap.docs.map(d=>({id:d.id,...d.data()}))); setLoading(false); }); return u; },[]);
-  useEffect(()=>{ const u=onSnapshot(collection(db,"categories"),snap=>{ if(snap.docs.length>0) setCategories(snap.docs.map(d=>({...d.data()}))); }); return u; },[]);
-  useEffect(()=>{ const u=onSnapshot(doc(db,"settings","calcIcon"),snap=>{ if(snap.exists()) setCalcIcon(snap.data()); }); return u; },[]);
-  useEffect(()=>{ const u=onSnapshot(doc(db,"settings","theme"),snap=>{ if(snap.exists()) setTheme({...DEFAULT_THEME,...snap.data()}); }); return u; },[]);
-  useEffect(()=>{ const u=onSnapshot(doc(db,"settings","footerImg"),snap=>{ if(snap.exists()) setFooterImg(snap.data().url||null); }); return u; },[]);
+  useEffect(() => {
+    // 監聽紀錄
+    const unsubRecords = onSnapshot(collection(db, "records"), (snap) => {
+        setRecords(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setLoading(false);
+    });
 
-  // ── Firebase 寫入 ──
-  useEffect(()=>{ categories.forEach(cat=>setDoc(doc(db,"categories",cat.id),cat)); },[categories]);
-  useEffect(()=>{ setDoc(doc(db,"settings","calcIcon"),calcIcon); },[calcIcon]);
-  useEffect(()=>{ setDoc(doc(db,"settings","theme"),theme); },[theme]);
+    // 讀取分類 (初始讀取一次，優先使用雲端資料)
+    const loadCategories = async () => {
+        const snap = await getDocs(collection(db, "categories"));
+        if (!snap.empty) {
+            setCategories(snap.docs.map(d => d.data()));
+        }
+    };
+    loadCategories();
+
+    // 監聽其他設定
+    const unsubCalc = onSnapshot(doc(db, "settings", "calcIcon"), snap => { if (snap.exists()) setCalcIcon(snap.data()); });
+    const unsubFooter = onSnapshot(doc(db, "settings", "footerImg"), snap => { if (snap.exists()) setFooterImg(snap.data().url || null); });
+
+    return () => { unsubRecords(); unsubCalc(); unsubFooter(); };
+  }, []);
+
+  // ── 單獨監聽設定寫入 ──
+  useEffect(() => { setDoc(doc(db, "settings", "calcIcon"), calcIcon); }, [calcIcon]);
 
   function saveFooterImg(dataUrl) { setFooterImg(dataUrl); setDoc(doc(db,"settings","footerImg"),{url:dataUrl}); }
   function removeFooterImg()      { setFooterImg(null);    setDoc(doc(db,"settings","footerImg"),{url:null}); }
@@ -525,7 +514,6 @@ export default function App() {
                 );
               })}
 
-              {/* 總計 + 匯出 */}
               <div style={{ ...cardSt,display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:4 }}>
                 <div>
                   <div style={{ fontSize:11,color:T.muted,fontWeight:600,letterSpacing:0.8,marginBottom:3 }}>本月支出總計</div>
@@ -538,7 +526,6 @@ export default function App() {
                 </button>
               </div>
 
-              {/* 底部圖片 */}
               <div style={{ marginTop:8,borderRadius:16,overflow:"hidden" }}>
                 {footerImg ? (
                   <div style={{ position:"relative" }}>
@@ -599,7 +586,7 @@ export default function App() {
           {tab==="settings" && (
             <SettingsTab categories={categories} setCategories={setCategories}
               calcIcon={calcIcon} setCalcIcon={setCalcIcon}
-              theme={T} setTheme={setTheme} />
+              theme={T} />
           )}
         </div>
       </div>
@@ -681,7 +668,7 @@ export default function App() {
         </div>
       )}
 
-      {showCalc && <Calculator initial={form.amount} calcIcon={calcIcon} theme={T} onConfirm={v=>{ setForm(f=>({...f,amount:String(v)})); setShowCalc(false); }} onClose={()=>setShowCalc(false)} />}
+      {showCalc && <Calculator initial={form.amount} theme={T} onConfirm={v=>{ setForm(f=>({...f,amount:String(v)})); setShowCalc(false); }} onClose={()=>setShowCalc(false)} />}
     </div>
   );
 }
