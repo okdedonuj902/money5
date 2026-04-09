@@ -225,8 +225,8 @@ function RecordForm({ isEdit, initialForm, categories, calcIcon, onSubmit, onClo
             {selectedMain && selectedMain.sub.length>0 && (
               <div style={{display:"flex",flexWrap:"wrap",gap:6,paddingLeft:4,borderLeft:`3px solid ${T.accentLight}`,marginLeft:2}}>
                 {selectedMain.sub.map(s=>(
-                  <button key={s.id} onClick={()=>setForm(f=>({...f,catSub:s.id}))} style={{...chipSt(form.catSub===s.id,T.accent,T.accentLight),fontSize:12,padding:"5px 10px"}}>
-                    <span style={{width:15,height:15,borderRadius:4,overflow:"hidden",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:11,background:T.accentLight,flexShrink:0}}>
+                  <button key={s.id} onClick={()=>setForm(f=>({...f,catSub:s.id}))} style={{...chipSt(form.catSub===s.id,T.accent,T.accentLight),fontSize:12,padding:"5px 10px",background:form.catSub===s.id?T.accentLight:"#EDE8E1"}}>
+                    <span style={{width:15,height:15,borderRadius:4,overflow:"hidden",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:11,background:"rgba(0,0,0,0.06)",flexShrink:0}}>
                       {s.img?<img src={s.img} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:s.icon}
                     </span>
                     {s.label}
@@ -308,33 +308,7 @@ function SettingsTab({ categories, onSaveCategories, calcIcon, setCalcIcon }) {
 
   return (
     <div>
-      <div style={{display:"flex",gap:8,marginBottom:16}}>
-        {[["calc","🧮 計算機"],["cats","📂 分類"]].map(([k,l])=>(
-          <button key={k} onClick={()=>setSection(k)}
-            style={{flex:1,padding:"10px 0",borderRadius:11,border:`1.5px solid ${section===k?T.accent:T.border}`,background:section===k?T.accent+"18":"#fff",color:section===k?T.accent:T.muted,fontSize:13,fontWeight:section===k?700:500,cursor:"pointer",fontFamily:"inherit"}}>
-            {l}
-          </button>
-        ))}
-      </div>
-
-      {section==="calc" && (
-        <div>
-          <div style={{fontSize:13,fontWeight:700,color:T.ink,marginBottom:10}}>計算機按鈕圖示</div>
-          <div style={{background:T.card,borderRadius:14,padding:"14px",boxShadow:"0 1px 4px rgba(0,0,0,0.04)",display:"flex",alignItems:"center",gap:12}}>
-            <div style={{width:52,height:52,borderRadius:13,background:T.accentLight,display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,overflow:"hidden",cursor:"pointer",flexShrink:0}}
-              onClick={()=>calcImgRef.current?.click()}>
-              {calcIcon?.img?<img src={calcIcon.img} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<span>{calcIcon?.emoji||"🧮"}</span>}
-            </div>
-            <div style={{flex:1}}>
-              <input value={calcIcon?.emoji||""} onChange={e=>setCalcIcon(ci=>({...ci,emoji:e.target.value,img:null}))} placeholder="輸入 Emoji" style={{...iSt,marginBottom:8}}/>
-              <button onClick={()=>calcImgRef.current?.click()} style={bSt(T.warmLight,T.warm)}>📁 上傳自訂圖片</button>
-              <input ref={calcImgRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(f)handleImg(f,d=>setCalcIcon({emoji:"",img:d}));}}/>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {section==="cats" && (
+      {(
         <div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
             <div style={{fontSize:13,fontWeight:700,color:T.ink}}>管理分類</div>
