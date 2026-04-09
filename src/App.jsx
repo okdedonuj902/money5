@@ -225,8 +225,8 @@ function RecordForm({ isEdit, initialForm, categories, calcIcon, onSubmit, onClo
             {selectedMain && selectedMain.sub.length>0 && (
               <div style={{display:"flex",flexWrap:"wrap",gap:6,paddingLeft:4,borderLeft:`3px solid ${T.accentLight}`,marginLeft:2}}>
                 {selectedMain.sub.map(s=>(
-                  <button key={s.id} onClick={()=>setForm(f=>({...f,catSub:s.id}))} style={{...chipSt(form.catSub===s.id,T.warm,T.warmLight),fontSize:12,padding:"5px 10px"}}>
-                    <span style={{width:15,height:15,borderRadius:4,overflow:"hidden",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:11,background:T.warmLight,flexShrink:0}}>
+                  <button key={s.id} onClick={()=>setForm(f=>({...f,catSub:s.id}))} style={{...chipSt(form.catSub===s.id,T.accent,T.accentLight),fontSize:12,padding:"5px 10px"}}>
+                    <span style={{width:15,height:15,borderRadius:4,overflow:"hidden",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:11,background:T.accentLight,flexShrink:0}}>
                       {s.img?<img src={s.img} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:s.icon}
                     </span>
                     {s.label}
