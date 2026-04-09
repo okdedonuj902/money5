@@ -455,7 +455,11 @@ export default function App() {
   const [tab,         setTab]         = useState("home");
   // formState: null | { mode:"add" } | { mode:"edit", record:{...} }
   const [formState,   setFormState]   = useState(null);
-  const [filterMonth, setFilterMonth] = useState(today().slice(0,7));
+  const [filterMonth,  setFilterMonth]  = useState(today().slice(0,7));
+  const [showExport,   setShowExport]   = useState(false);
+  const [exportFrom,   setExportFrom]   = useState("");
+  const [exportTo,     setExportTo]     = useState("");
+  const [exportMode,   setExportMode]   = useState("all");
   const payMap = Object.fromEntries(PAYMENT_METHODS.map(p=>[p.id,p]));
 
   useEffect(()=>{ const u=onSnapshot(collection(db,"records"),snap=>{ setRecords(snap.docs.map(d=>({id:d.id,...d.data()}))); setLoading(false); }); return u; },[]);
@@ -572,27 +576,93 @@ export default function App() {
               })}
 
               {/* 總計 + 匯出 */}
-              <div style={{...cardSt,display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:4}}>
-                <div>
-                  <div style={{fontSize:11,color:T.muted,fontWeight:600,letterSpacing:0.8,marginBottom:3}}>本月支出總計</div>
-                  <div style={{fontSize:22,fontWeight:700,color:T.accent,letterSpacing:-0.5}}>{fmt(totalMonth)}</div>
-                  <div style={{fontSize:11,color:T.muted,marginTop:2}}>{filtered.length} 筆</div>
+              <div style={{...cardSt,marginTop:4}}>
+                {/* 總計列 */}
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom: showExport?14:0}}>
+                  <div>
+                    <div style={{fontSize:11,color:T.muted,fontWeight:600,letterSpacing:0.8,marginBottom:3}}>本月支出總計</div>
+                    <div style={{fontSize:22,fontWeight:700,color:T.accent,letterSpacing:-0.5}}>{fmt(totalMonth)}</div>
+                    <div style={{fontSize:11,color:T.muted,marginTop:2}}>{filtered.length} 筆</div>
+                  </div>
+                  <button onClick={()=>{ setShowExport(v=>!v); setExportMode("all"); setExportFrom(""); setExportTo(""); }}
+                    style={{padding:"11px 16px",background:showExport?T.accent:"none",color:showExport?"#fff":T.accent,border:`1.5px solid ${T.accent}`,borderRadius:12,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",transition:"all 0.15s"}}>
+                    ↓ 匯出 Excel
+                  </button>
                 </div>
-                <button onClick={()=>{
-                  const rows=[...records].sort((a,b)=>b.date.localeCompare(a.date)).map(r=>({
-                    "日期":r.date,"品項名稱":r.item,"說明":r.note,
-                    "大分類":findMain(categories,r.catMain)?.label||"",
-                    "小分類":findSub(categories,r.catMain,r.catSub)?.label||"",
-                    "付款方式":payMap[r.payment]?.label||r.payment,"金額 (NT$)":r.amount,
-                  }));
-                  const ws=XLSX.utils.json_to_sheet(rows);
-                  ws["!cols"]=[{wch:12},{wch:20},{wch:26},{wch:10},{wch:10},{wch:10},{wch:12}];
-                  const wb=XLSX.utils.book_new();
-                  XLSX.utils.book_append_sheet(wb,ws,"支出記錄");
-                  XLSX.writeFile(wb,`支出記錄_${today()}.xlsx`);
-                }} style={{padding:"11px 18px",background:"none",color:T.accent,border:`1.5px solid ${T.accent}`,borderRadius:12,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                  ↓ 匯出 Excel
-                </button>
+
+                {/* 匯出設定展開區 */}
+                {showExport && (
+                  <div style={{borderTop:`1px solid ${T.border}`,paddingTop:14}}>
+                    <div style={{fontSize:12,fontWeight:700,color:T.ink,marginBottom:10}}>選擇匯出範圍</div>
+
+                    {/* 模式選擇 */}
+                    <div style={{display:"flex",gap:8,marginBottom:14}}>
+                      {[["all","全部記錄"],["range","指定月份"]].map(([v,l])=>(
+                        <button key={v} onClick={()=>setExportMode(v)}
+                          style={{flex:1,padding:"9px 0",borderRadius:10,border:`1.5px solid ${exportMode===v?T.accent:T.border}`,background:exportMode===v?T.accentLight:"#fff",color:exportMode===v?T.accent:T.muted,fontSize:13,fontWeight:exportMode===v?700:500,cursor:"pointer",fontFamily:"inherit"}}>
+                          {l}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* 月份範圍選擇 */}
+                    {exportMode==="range" && (
+                      <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:14}}>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:11,color:T.muted,marginBottom:4,fontWeight:600}}>從</div>
+                          <select value={exportFrom} onChange={e=>setExportFrom(e.target.value)}
+                            style={{width:"100%",padding:"9px 10px",borderRadius:10,border:`1.5px solid ${T.border}`,fontSize:13,color:exportFrom?T.ink:T.muted,background:T.bg,fontFamily:"inherit",outline:"none"}}>
+                            <option value="">選擇月份</option>
+                            {monthOpts.slice().reverse().map(m=><option key={m} value={m}>{m.replace("-","年")}月</option>)}
+                          </select>
+                        </div>
+                        <div style={{fontSize:16,color:T.muted,paddingTop:18}}>→</div>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:11,color:T.muted,marginBottom:4,fontWeight:600}}>到</div>
+                          <select value={exportTo} onChange={e=>setExportTo(e.target.value)}
+                            style={{width:"100%",padding:"9px 10px",borderRadius:10,border:`1.5px solid ${T.border}`,fontSize:13,color:exportTo?T.ink:T.muted,background:T.bg,fontFamily:"inherit",outline:"none"}}>
+                            <option value="">選擇月份</option>
+                            {monthOpts.slice().reverse().map(m=><option key={m} value={m}>{m.replace("-","年")}月</option>)}
+                          </select>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 確認匯出按鈕 */}
+                    <button onClick={()=>{
+                      let exportRecords = [...records];
+                      let filename = "支出記錄_全部";
+                      if(exportMode==="range" && exportFrom && exportTo){
+                        const from = exportFrom <= exportTo ? exportFrom : exportTo;
+                        const to   = exportFrom <= exportTo ? exportTo   : exportFrom;
+                        exportRecords = exportRecords.filter(r=>r.date.slice(0,7)>=from && r.date.slice(0,7)<=to);
+                        filename = `支出記錄_${from.replace("-","年")}月至${to.replace("-","年")}月`;
+                      } else if(exportMode==="range"){
+                        return;
+                      }
+                      exportRecords.sort((a,b)=>b.date.localeCompare(a.date));
+                      const rows = exportRecords.map(r=>({
+                        "日期":r.date,"品項名稱":r.item,"說明":r.note,
+                        "大分類":findMain(categories,r.catMain)?.label||"",
+                        "小分類":findSub(categories,r.catMain,r.catSub)?.label||"",
+                        "付款方式":payMap[r.payment]?.label||r.payment,"金額 (NT$)":r.amount,
+                      }));
+                      const ws=XLSX.utils.json_to_sheet(rows);
+                      ws["!cols"]=[{wch:12},{wch:20},{wch:26},{wch:10},{wch:10},{wch:10},{wch:12}];
+                      const wb=XLSX.utils.book_new();
+                      XLSX.utils.book_append_sheet(wb,ws,"支出記錄");
+                      XLSX.writeFile(wb,`${filename}.xlsx`);
+                      setShowExport(false);
+                    }}
+                      style={{width:"100%",padding:"12px 0",background:T.accent,color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                        opacity:(exportMode==="range"&&(!exportFrom||!exportTo))?0.4:1}}>
+                      ↓ 確認匯出
+                    </button>
+                    {exportMode==="range"&&(!exportFrom||!exportTo)&&(
+                      <div style={{fontSize:11,color:T.muted,textAlign:"center",marginTop:8}}>請選擇起始和結束月份</div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* 底部圖片 */}
