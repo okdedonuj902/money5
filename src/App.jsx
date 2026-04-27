@@ -468,6 +468,35 @@ export default function App() {
   useEffect(()=>{ const u=onSnapshot(doc(db,"settings","footerImg"),snap=>{ if(snap.exists()) setFooterImg(snap.data().url||null); }); return u; },[]);
   useEffect(()=>{ setDoc(doc(db,"settings","calcIcon"),calcIcon); },[calcIcon]);
 
+  // ── 信用卡 & 存款 ──
+  const [creditBills,  setCreditBills]  = useState([]);
+  const [savingsRecs,  setSavingsRecs]  = useState([]);
+  const [showCreditForm,  setShowCreditForm]  = useState(false);
+  const [showSavingsForm, setShowSavingsForm] = useState(false);
+  const [creditForm,  setCreditForm]  = useState({dueDate:"",card:"",amount:"",note:""});
+  const [savingsForm, setSavingsForm] = useState({date:today(),bank:"",balance:""});
+  const [creditFilterMonth, setCreditFilterMonth] = useState(today().slice(0,7));
+
+  useEffect(()=>{ const u=onSnapshot(collection(db,"creditBills"),snap=>{ setCreditBills(snap.docs.map(d=>({id:d.id,...d.data()}))); }); return u; },[]);
+  useEffect(()=>{ const u=onSnapshot(collection(db,"savingsRecs"),snap=>{ setSavingsRecs(snap.docs.map(d=>({id:d.id,...d.data()}))); }); return u; },[]);
+
+  const CREDIT_CARDS = ["書宇聯邦","書宇匯豐","書宇玉山","書宇台灣銀行","書宇遠東商銀","書宇富邦","晴儀華南","晴儀台新","晴儀中國信託","晴儀星展","晴儀元大","晴儀富邦"];
+  const SAVINGS_BANKS = ["晴儀郵局","晴儀富邦","晴儀將來","晴儀華南","晴儀台新","書宇郵局","書宇台銀"];
+
+  async function addCreditBill() {
+    if(!creditForm.dueDate||!creditForm.card||!creditForm.amount||isNaN(creditForm.amount)||+creditForm.amount<=0) return;
+    await addDoc(collection(db,"creditBills"),{...creditForm,amount:+creditForm.amount,month:creditForm.dueDate.slice(0,7)});
+    setCreditForm({dueDate:"",card:"",amount:"",note:""});
+    setShowCreditForm(false);
+  }
+  async function addSavingsRec() {
+    if(!savingsForm.date||!savingsForm.bank||!savingsForm.balance||isNaN(savingsForm.balance)||+savingsForm.balance<0) return;
+    // 同一個銀行只保留最新一筆（用 setDoc 覆蓋）
+    await setDoc(doc(db,"savingsRecs",savingsForm.bank),{...savingsForm,balance:+savingsForm.balance,updatedAt:today()});
+    setSavingsForm({date:today(),bank:"",balance:""});
+    setShowSavingsForm(false);
+  }
+
   async function saveCategories(cats) { await setDoc(doc(db,"settings","categories"),{list:cats}); setCategories(cats); }
   async function saveFooterImg(url)   { const c=await compressImage(url,800,0.8); setFooterImg(c); setDoc(doc(db,"settings","footerImg"),{url:c}); }
   function removeFooterImg()          { setFooterImg(null); setDoc(doc(db,"settings","footerImg"),{url:null}); }
@@ -516,10 +545,10 @@ export default function App() {
               ＋ 新增支出
             </button>
           </div>
-          <div style={{display:"flex",borderTop:`1px solid ${T.border}`}}>
-            {[["home","明細"],["stats","統計"],["settings","設定"]].map(([k,l])=>(
+          <div style={{display:"flex",borderTop:`1px solid ${T.border}`,overflowX:"auto"}}>
+            {[["home","明細"],["stats","月統計"],["credit","信用卡"],["savings","存款"],["settings","設定"]].map(([k,l])=>(
               <button key={k} onClick={()=>setTab(k)}
-                style={{flex:1,padding:"11px 0",border:"none",background:"none",cursor:"pointer",fontSize:12,fontWeight:tab===k?700:500,color:tab===k?T.accent:T.muted,borderBottom:tab===k?`2px solid ${T.accent}`:"2px solid transparent",transition:"all 0.15s",fontFamily:"inherit"}}>
+                style={{flex:"0 0 auto",padding:"11px 12px",border:"none",background:"none",cursor:"pointer",fontSize:12,fontWeight:tab===k?700:500,color:tab===k?T.accent:T.muted,borderBottom:tab===k?`2px solid ${T.accent}`:"2px solid transparent",transition:"all 0.15s",fontFamily:"inherit",whiteSpace:"nowrap"}}>
                 {l}
               </button>
             ))}
@@ -718,6 +747,195 @@ export default function App() {
                 ))}
                 {payStats.length===0&&<div style={{color:T.muted,fontSize:13}}>本月尚無資料</div>}
               </div>
+            </>
+          )}
+
+          {/* 信用卡 */}
+          {tab==="credit" && (
+            <>
+              {/* 月份篩選 + 新增按鈕 */}
+              <div style={{display:"flex",gap:8,marginBottom:14,alignItems:"center"}}>
+                <select value={creditFilterMonth} onChange={e=>setCreditFilterMonth(e.target.value)}
+                  style={{flex:1,padding:"9px 10px",borderRadius:10,border:`1.5px solid ${T.border}`,fontSize:13,color:T.ink,background:T.bg,fontFamily:"inherit",outline:"none"}}>
+                  {[...new Set([creditFilterMonth,...creditBills.map(b=>b.month||b.dueDate?.slice(0,7)||"")])].filter(Boolean).sort((a,b)=>b.localeCompare(a)).map(m=>(
+                    <option key={m} value={m}>{m.replace("-","年")}月</option>
+                  ))}
+                  {creditBills.length===0&&<option value={creditFilterMonth}>{creditFilterMonth.replace("-","年")}月</option>}
+                </select>
+                <button onClick={()=>setShowCreditForm(v=>!v)}
+                  style={{flexShrink:0,padding:"9px 16px",background:showCreditForm?T.accent:"none",color:showCreditForm?"#fff":T.accent,border:`1.5px solid ${T.accent}`,borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                  {showCreditForm?"✕ 取消":"＋ 新增"}
+                </button>
+              </div>
+
+              {/* 新增信用卡帳單表單 */}
+              {showCreditForm && (
+                <div style={{...cardSt,marginBottom:14,background:T.accentLight}}>
+                  <div style={{fontSize:13,fontWeight:700,color:T.ink,marginBottom:12}}>新增信用卡帳單</div>
+                  <div style={{marginBottom:10}}>
+                    <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:4}}>繳費截止日 *</div>
+                    <input type="date" value={creditForm.dueDate} onChange={e=>setCreditForm(f=>({...f,dueDate:e.target.value}))}
+                      style={{width:"100%",padding:"9px 12px",borderRadius:10,border:`1.5px solid ${T.border}`,fontSize:13,color:T.ink,background:"#fff",outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
+                  </div>
+                  <div style={{marginBottom:10}}>
+                    <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:4}}>信用卡別 *</div>
+                    <select value={creditForm.card} onChange={e=>setCreditForm(f=>({...f,card:e.target.value}))}
+                      style={{width:"100%",padding:"9px 12px",borderRadius:10,border:`1.5px solid ${T.border}`,fontSize:13,color:creditForm.card?T.ink:T.muted,background:"#fff",outline:"none",fontFamily:"inherit"}}>
+                      <option value="">請選擇信用卡</option>
+                      {CREDIT_CARDS.map(c=><option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div style={{marginBottom:10}}>
+                    <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:4}}>金額 *</div>
+                    <input type="number" placeholder="0" value={creditForm.amount} onChange={e=>setCreditForm(f=>({...f,amount:e.target.value}))}
+                      style={{width:"100%",padding:"9px 12px",borderRadius:10,border:`1.5px solid ${T.border}`,fontSize:16,fontWeight:700,color:T.ink,background:"#fff",outline:"none",boxSizing:"border-box",fontFamily:"inherit",textAlign:"right"}}/>
+                  </div>
+                  <div style={{marginBottom:14}}>
+                    <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:4}}>備註（選填）</div>
+                    <input type="text" placeholder="備注…" value={creditForm.note} onChange={e=>setCreditForm(f=>({...f,note:e.target.value}))}
+                      style={{width:"100%",padding:"9px 12px",borderRadius:10,border:`1.5px solid ${T.border}`,fontSize:13,color:T.ink,background:"#fff",outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
+                  </div>
+                  <button onClick={addCreditBill}
+                    style={{width:"100%",padding:"11px 0",background:T.accent,color:"#fff",border:"none",borderRadius:11,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                    儲存帳單
+                  </button>
+                </div>
+              )}
+
+              {/* 帳單列表 */}
+              {(()=>{
+                const bills = creditBills.filter(b=>(b.month||b.dueDate?.slice(0,7))=== creditFilterMonth).sort((a,b)=>a.dueDate.localeCompare(b.dueDate));
+                const total = bills.reduce((s,b)=>s+b.amount,0);
+                if(bills.length===0) return (
+                  <div style={{textAlign:"center",color:T.muted,padding:"40px 0",fontSize:14}}>
+                    <div style={{fontSize:28,marginBottom:8}}>💳</div>本月尚無帳單記錄
+                  </div>
+                );
+                return (
+                  <>
+                    {/* 總計卡片 */}
+                    <div style={{...cardSt,background:T.warmLight,marginBottom:14,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                      <div>
+                        <div style={{fontSize:11,color:T.warm,fontWeight:700,letterSpacing:0.8,marginBottom:3}}>本月信用卡總計</div>
+                        <div style={{fontSize:22,fontWeight:700,color:T.warm}}>{fmt(total)}</div>
+                        <div style={{fontSize:11,color:T.warm,marginTop:2}}>{bills.length} 張帳單</div>
+                      </div>
+                      <div style={{fontSize:32}}>💳</div>
+                    </div>
+
+                    {/* 表格 */}
+                    <div style={{background:T.card,borderRadius:16,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,0.04)"}}>
+                      {/* 表頭 */}
+                      <div style={{display:"grid",gridTemplateColumns:"90px 1fr 90px 32px",gap:0,background:T.accentLight,padding:"9px 12px"}}>
+                        {["截止日","信用卡","金額",""].map((h,i)=>(
+                          <div key={i} style={{fontSize:11,fontWeight:700,color:T.accent,textAlign:i===2?"right":"left"}}>{h}</div>
+                        ))}
+                      </div>
+                      {/* 資料列 */}
+                      {bills.map((b,i)=>(
+                        <div key={b.id} style={{display:"grid",gridTemplateColumns:"90px 1fr 90px 32px",gap:0,padding:"11px 12px",borderBottom:i<bills.length-1?`1px solid ${T.border}`:"none",alignItems:"center"}}>
+                          <div style={{fontSize:12,color:T.muted}}>{b.dueDate}</div>
+                          <div>
+                            <div style={{fontSize:13,fontWeight:600,color:T.ink}}>{b.card}</div>
+                            {b.note&&<div style={{fontSize:11,color:T.muted,marginTop:1}}>{b.note}</div>}
+                          </div>
+                          <div style={{fontSize:14,fontWeight:700,color:T.warm,textAlign:"right"}}>{fmt(b.amount)}</div>
+                          <button onClick={()=>deleteDoc(doc(db,"creditBills",b.id))}
+                            style={{fontSize:14,color:T.border,background:"none",border:"none",cursor:"pointer",padding:0,textAlign:"center"}}>×</button>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                );
+              })()}
+            </>
+          )}
+
+          {/* 存款 */}
+          {tab==="savings" && (
+            <>
+              <div style={{display:"flex",justifyContent:"flex-end",marginBottom:14}}>
+                <button onClick={()=>setShowSavingsForm(v=>!v)}
+                  style={{padding:"9px 16px",background:showSavingsForm?T.accent:"none",color:showSavingsForm?"#fff":T.accent,border:`1.5px solid ${T.accent}`,borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                  {showSavingsForm?"✕ 取消":"＋ 更新餘額"}
+                </button>
+              </div>
+
+              {/* 新增/更新存款表單 */}
+              {showSavingsForm && (
+                <div style={{...cardSt,marginBottom:14,background:T.accentLight}}>
+                  <div style={{fontSize:13,fontWeight:700,color:T.ink,marginBottom:12}}>更新帳戶餘額</div>
+                  <div style={{fontSize:11,color:T.muted,marginBottom:12,background:"#fff",borderRadius:9,padding:"8px 11px"}}>
+                    💡 同一個銀行只保留最新一筆，更新後會自動覆蓋
+                  </div>
+                  <div style={{marginBottom:10}}>
+                    <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:4}}>填寫日期 *</div>
+                    <input type="date" value={savingsForm.date} onChange={e=>setSavingsForm(f=>({...f,date:e.target.value}))}
+                      style={{width:"100%",padding:"9px 12px",borderRadius:10,border:`1.5px solid ${T.border}`,fontSize:13,color:T.ink,background:"#fff",outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
+                  </div>
+                  <div style={{marginBottom:10}}>
+                    <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:4}}>銀行別 *</div>
+                    <select value={savingsForm.bank} onChange={e=>setSavingsForm(f=>({...f,bank:e.target.value}))}
+                      style={{width:"100%",padding:"9px 12px",borderRadius:10,border:`1.5px solid ${T.border}`,fontSize:13,color:savingsForm.bank?T.ink:T.muted,background:"#fff",outline:"none",fontFamily:"inherit"}}>
+                      <option value="">請選擇銀行</option>
+                      {SAVINGS_BANKS.map(b=><option key={b} value={b}>{b}</option>)}
+                    </select>
+                  </div>
+                  <div style={{marginBottom:14}}>
+                    <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:4}}>餘額（NT$）*</div>
+                    <input type="number" placeholder="0" value={savingsForm.balance} onChange={e=>setSavingsForm(f=>({...f,balance:e.target.value}))}
+                      style={{width:"100%",padding:"9px 12px",borderRadius:10,border:`1.5px solid ${T.border}`,fontSize:16,fontWeight:700,color:T.ink,background:"#fff",outline:"none",boxSizing:"border-box",fontFamily:"inherit",textAlign:"right"}}/>
+                  </div>
+                  <button onClick={addSavingsRec}
+                    style={{width:"100%",padding:"11px 0",background:T.accent,color:"#fff",border:"none",borderRadius:11,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                    儲存餘額
+                  </button>
+                </div>
+              )}
+
+              {/* 存款列表 */}
+              {(()=>{
+                const total = savingsRecs.reduce((s,r)=>s+r.balance,0);
+                if(savingsRecs.length===0) return (
+                  <div style={{textAlign:"center",color:T.muted,padding:"40px 0",fontSize:14}}>
+                    <div style={{fontSize:28,marginBottom:8}}>🏦</div>尚未輸入任何帳戶餘額
+                  </div>
+                );
+                const sorted = [...savingsRecs].sort((a,b)=>a.bank.localeCompare(b.bank));
+                return (
+                  <>
+                    {/* 總計卡片 */}
+                    <div style={{...cardSt,background:"#EDF6EF",marginBottom:14,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                      <div>
+                        <div style={{fontSize:11,color:T.accent,fontWeight:700,letterSpacing:0.8,marginBottom:3}}>活期存款合計</div>
+                        <div style={{fontSize:22,fontWeight:700,color:T.accent}}>{fmt(total)}</div>
+                        <div style={{fontSize:11,color:T.accent,marginTop:2}}>{savingsRecs.length} 個帳戶</div>
+                      </div>
+                      <div style={{fontSize:32}}>🏦</div>
+                    </div>
+
+                    {/* 表格 */}
+                    <div style={{background:T.card,borderRadius:16,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,0.04)"}}>
+                      {/* 表頭 */}
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 100px 80px 32px",gap:0,background:T.accentLight,padding:"9px 12px"}}>
+                        {["銀行別","更新日期","餘額",""].map((h,i)=>(
+                          <div key={i} style={{fontSize:11,fontWeight:700,color:T.accent,textAlign:i===2?"right":"left"}}>{h}</div>
+                        ))}
+                      </div>
+                      {/* 資料列 */}
+                      {sorted.map((r,i)=>(
+                        <div key={r.id} style={{display:"grid",gridTemplateColumns:"1fr 100px 80px 32px",gap:0,padding:"11px 12px",borderBottom:i<sorted.length-1?`1px solid ${T.border}`:"none",alignItems:"center"}}>
+                          <div style={{fontSize:13,fontWeight:600,color:T.ink}}>{r.bank}</div>
+                          <div style={{fontSize:11,color:T.muted}}>{r.date||r.updatedAt}</div>
+                          <div style={{fontSize:14,fontWeight:700,color:T.accent,textAlign:"right"}}>{fmt(r.balance)}</div>
+                          <button onClick={()=>deleteDoc(doc(db,"savingsRecs",r.id))}
+                            style={{fontSize:14,color:T.border,background:"none",border:"none",cursor:"pointer",padding:0,textAlign:"center"}}>×</button>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                );
+              })()}
             </>
           )}
 
