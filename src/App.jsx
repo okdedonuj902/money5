@@ -483,6 +483,22 @@ export default function App() {
   const CREDIT_CARDS = ["書宇聯邦","書宇匯豐","書宇玉山","書宇台灣銀行","書宇遠東商銀","書宇富邦","晴儀華南","晴儀台新","晴儀中國信託","晴儀星展","晴儀元大","晴儀富邦"];
   const SAVINGS_BANKS = ["晴儀郵局","晴儀富邦","晴儀將來","晴儀華南","晴儀台新","書宇郵局","書宇台銀"];
 
+  const [incomeRecs,     setIncomeRecs]     = useState([]);
+  const [showIncomeForm, setShowIncomeForm] = useState(false);
+  const [incomeForm,     setIncomeForm]     = useState({date:today(),person:"吳書宇",category:"薪資收入",amount:"",note:""});
+  const [incomeFilterMonth, setIncomeFilterMonth] = useState(today().slice(0,7));
+  const INCOME_PERSONS     = ["吳書宇","楊晴儀"];
+  const INCOME_CATEGORIES  = ["薪資收入","其他工資收入","其他收入"];
+
+  useEffect(()=>{ const u=onSnapshot(collection(db,"incomeRecs"),snap=>{ setIncomeRecs(snap.docs.map(d=>({id:d.id,...d.data()}))); }); return u; },[]);
+
+  async function addIncomeRec() {
+    if(!incomeForm.date||!incomeForm.person||!incomeForm.category||!incomeForm.amount||isNaN(incomeForm.amount)||+incomeForm.amount<=0) return;
+    await addDoc(collection(db,"incomeRecs"),{...incomeForm,amount:+incomeForm.amount,month:incomeForm.date.slice(0,7)});
+    setIncomeForm({date:today(),person:"吳書宇",category:"薪資收入",amount:"",note:""});
+    setShowIncomeForm(false);
+  }
+
   async function addCreditBill() {
     if(!creditForm.dueDate||!creditForm.card||!creditForm.amount||isNaN(creditForm.amount)||+creditForm.amount<=0) return;
     await addDoc(collection(db,"creditBills"),{...creditForm,amount:+creditForm.amount,month:creditForm.dueDate.slice(0,7)});
@@ -546,7 +562,7 @@ export default function App() {
             </button>
           </div>
           <div style={{display:"flex",borderTop:`1px solid ${T.border}`,overflowX:"auto"}}>
-            {[["home","明細"],["stats","月統計"],["credit","信用卡"],["savings","存款"],["settings","設定"]].map(([k,l])=>(
+            {[["home","明細"],["stats","月統計"],["income","月收入"],["credit","信用卡"],["savings","存款"],["settings","設定"]].map(([k,l])=>(
               <button key={k} onClick={()=>setTab(k)}
                 style={{flex:"0 0 auto",padding:"11px 12px",border:"none",background:"none",cursor:"pointer",fontSize:12,fontWeight:tab===k?700:500,color:tab===k?T.accent:T.muted,borderBottom:tab===k?`2px solid ${T.accent}`:"2px solid transparent",transition:"all 0.15s",fontFamily:"inherit",whiteSpace:"nowrap"}}>
                 {l}
@@ -747,6 +763,137 @@ export default function App() {
                 ))}
                 {payStats.length===0&&<div style={{color:T.muted,fontSize:13}}>本月尚無資料</div>}
               </div>
+            </>
+          )}
+
+          {/* 月收入 */}
+          {tab==="income" && (
+            <>
+              {/* 月份篩選 + 新增按鈕 */}
+              <div style={{display:"flex",gap:8,marginBottom:14,alignItems:"center"}}>
+                <select value={incomeFilterMonth} onChange={e=>setIncomeFilterMonth(e.target.value)}
+                  style={{flex:1,padding:"9px 10px",borderRadius:10,border:`1.5px solid ${T.border}`,fontSize:13,color:T.ink,background:T.bg,fontFamily:"inherit",outline:"none"}}>
+                  {[...new Set([incomeFilterMonth,...incomeRecs.map(r=>r.month||r.date?.slice(0,7)||"")])].filter(Boolean).sort((a,b)=>b.localeCompare(a)).map(m=>(
+                    <option key={m} value={m}>{m.replace("-","年")}月</option>
+                  ))}
+                  {incomeRecs.length===0&&<option value={incomeFilterMonth}>{incomeFilterMonth.replace("-","年")}月</option>}
+                </select>
+                <button onClick={()=>setShowIncomeForm(v=>!v)}
+                  style={{flexShrink:0,padding:"9px 16px",background:showIncomeForm?T.accent:"none",color:showIncomeForm?"#fff":T.accent,border:`1.5px solid ${T.accent}`,borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                  {showIncomeForm?"✕ 取消":"＋ 新增"}
+                </button>
+              </div>
+
+              {/* 新增收入表單 */}
+              {showIncomeForm && (
+                <div style={{...cardSt,marginBottom:14,background:T.accentLight}}>
+                  <div style={{fontSize:13,fontWeight:700,color:T.ink,marginBottom:12}}>新增收入記錄</div>
+                  <div style={{marginBottom:10}}>
+                    <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:4}}>日期 *</div>
+                    <input type="date" value={incomeForm.date} onChange={e=>setIncomeForm(f=>({...f,date:e.target.value,month:e.target.value.slice(0,7)}))}
+                      style={{width:"100%",padding:"9px 12px",borderRadius:10,border:`1.5px solid ${T.border}`,fontSize:13,color:T.ink,background:"#fff",outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
+                  </div>
+                  <div style={{marginBottom:10}}>
+                    <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:6}}>誰的收入 *</div>
+                    <div style={{display:"flex",gap:8}}>
+                      {INCOME_PERSONS.map(p=>(
+                        <button key={p} onClick={()=>setIncomeForm(f=>({...f,person:p}))}
+                          style={{flex:1,padding:"9px 0",borderRadius:10,border:`1.5px solid ${incomeForm.person===p?T.accent:T.border}`,background:incomeForm.person===p?T.accentLight:"#fff",color:incomeForm.person===p?T.accent:T.muted,fontSize:13,fontWeight:incomeForm.person===p?700:500,cursor:"pointer",fontFamily:"inherit"}}>
+                          {p}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{marginBottom:10}}>
+                    <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:6}}>收入類別 *</div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
+                      {INCOME_CATEGORIES.map(c=>(
+                        <button key={c} onClick={()=>setIncomeForm(f=>({...f,category:c}))}
+                          style={{padding:"7px 13px",borderRadius:10,border:`1.5px solid ${incomeForm.category===c?T.accent:T.border}`,background:incomeForm.category===c?T.accentLight:"#fff",color:incomeForm.category===c?T.accent:T.muted,fontSize:12,fontWeight:incomeForm.category===c?700:500,cursor:"pointer",fontFamily:"inherit"}}>
+                          {c}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{marginBottom:10}}>
+                    <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:4}}>金額（NT$）*</div>
+                    <input type="number" placeholder="0" value={incomeForm.amount} onChange={e=>setIncomeForm(f=>({...f,amount:e.target.value}))}
+                      style={{width:"100%",padding:"9px 12px",borderRadius:10,border:`1.5px solid ${T.border}`,fontSize:16,fontWeight:700,color:T.ink,background:"#fff",outline:"none",boxSizing:"border-box",fontFamily:"inherit",textAlign:"right"}}/>
+                  </div>
+                  <div style={{marginBottom:14}}>
+                    <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:4}}>備註（選填）</div>
+                    <input type="text" placeholder="備注…" value={incomeForm.note} onChange={e=>setIncomeForm(f=>({...f,note:e.target.value}))}
+                      style={{width:"100%",padding:"9px 12px",borderRadius:10,border:`1.5px solid ${T.border}`,fontSize:13,color:T.ink,background:"#fff",outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
+                  </div>
+                  <button onClick={addIncomeRec}
+                    style={{width:"100%",padding:"11px 0",background:T.accent,color:"#fff",border:"none",borderRadius:11,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                    儲存收入
+                  </button>
+                </div>
+              )}
+
+              {/* 收入列表 */}
+              {(()=>{
+                const recs = incomeRecs.filter(r=>(r.month||r.date?.slice(0,7))===incomeFilterMonth).sort((a,b)=>a.date.localeCompare(b.date));
+                const totalAll  = recs.reduce((s,r)=>s+r.amount,0);
+                const totalSY   = recs.filter(r=>r.person==="吳書宇").reduce((s,r)=>s+r.amount,0);
+                const totalQY   = recs.filter(r=>r.person==="楊晴儀").reduce((s,r)=>s+r.amount,0);
+                if(recs.length===0) return (
+                  <div style={{textAlign:"center",color:T.muted,padding:"40px 0",fontSize:14}}>
+                    <div style={{fontSize:28,marginBottom:8}}>💰</div>本月尚無收入記錄
+                  </div>
+                );
+                return (
+                  <>
+                    {/* 總計卡片 */}
+                    <div style={{...cardSt,background:"#EDF6EF",marginBottom:10}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+                        <div>
+                          <div style={{fontSize:11,color:T.accent,fontWeight:700,letterSpacing:0.8,marginBottom:3}}>本月收入合計</div>
+                          <div style={{fontSize:22,fontWeight:700,color:T.accent}}>{fmt(totalAll)}</div>
+                        </div>
+                        <div style={{fontSize:28}}>💰</div>
+                      </div>
+                      <div style={{display:"flex",gap:8}}>
+                        <div style={{flex:1,background:"rgba(255,255,255,0.7)",borderRadius:10,padding:"9px 12px"}}>
+                          <div style={{fontSize:11,color:T.muted,marginBottom:3}}>書宇</div>
+                          <div style={{fontSize:15,fontWeight:700,color:T.accent}}>{fmt(totalSY)}</div>
+                        </div>
+                        <div style={{flex:1,background:"rgba(255,255,255,0.7)",borderRadius:10,padding:"9px 12px"}}>
+                          <div style={{fontSize:11,color:T.muted,marginBottom:3}}>晴儀</div>
+                          <div style={{fontSize:15,fontWeight:700,color:T.accent}}>{fmt(totalQY)}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 表格 */}
+                    <div style={{background:T.card,borderRadius:16,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,0.04)"}}>
+                      <div style={{display:"grid",gridTemplateColumns:"70px 72px 1fr 80px 28px",gap:0,background:T.accentLight,padding:"9px 12px"}}>
+                        {["日期","誰","類別","金額",""].map((h,i)=>(
+                          <div key={i} style={{fontSize:11,fontWeight:700,color:T.accent,textAlign:i===3?"right":"left"}}>{h}</div>
+                        ))}
+                      </div>
+                      {recs.map((r,i)=>(
+                        <div key={r.id} style={{display:"grid",gridTemplateColumns:"70px 72px 1fr 80px 28px",gap:0,padding:"10px 12px",borderBottom:i<recs.length-1?`1px solid ${T.border}`:"none",alignItems:"center"}}>
+                          <div style={{fontSize:11,color:T.muted}}>{r.date}</div>
+                          <div>
+                            <span style={{fontSize:11,fontWeight:700,background:r.person==="吳書宇"?T.accentLight:T.warmLight,color:r.person==="吳書宇"?T.accent:T.warm,borderRadius:6,padding:"2px 6px"}}>
+                              {r.person==="吳書宇"?"書宇":"晴儀"}
+                            </span>
+                          </div>
+                          <div>
+                            <div style={{fontSize:12,color:T.ink}}>{r.category}</div>
+                            {r.note&&<div style={{fontSize:10,color:T.muted,marginTop:1}}>{r.note}</div>}
+                          </div>
+                          <div style={{fontSize:13,fontWeight:700,color:T.accent,textAlign:"right"}}>{fmt(r.amount)}</div>
+                          <button onClick={()=>deleteDoc(doc(db,"incomeRecs",r.id))}
+                            style={{fontSize:14,color:T.border,background:"none",border:"none",cursor:"pointer",padding:0,textAlign:"center"}}>×</button>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                );
+              })()}
             </>
           )}
 
