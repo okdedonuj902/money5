@@ -151,8 +151,10 @@ function Calculator({ initial="", calcIcon, onConfirm, onClose }) {
 // ══════════════════════════════════════════════════════
 // 支出表單（新增 & 編輯共用）
 // ══════════════════════════════════════════════════════
+const CREDIT_CARDS = ["書宇聯邦","書宇匯豐","書宇玉山","書宇台灣銀行","書宇遠東商銀","書宇富邦","晴儀華南","晴儀台新","晴儀中國信託","晴儀星展","晴儀元大","晴儀富邦"];
+
 function RecordForm({ isEdit, initialForm, categories, calcIcon, onSubmit, onClose }) {
-  const [form,      setForm]      = useState({ date:today(), item:"", note:"", catMain:"", catSub:"", payment:"cash", amount:"", ...initialForm });
+  const [form,      setForm]      = useState({ date:today(), item:"", note:"", catMain:"", catSub:"", payment:"cash", creditCard:"", amount:"", ...initialForm });
   const [formError, setFormError] = useState("");
   const [showCalc,  setShowCalc]  = useState(false);
   const selectedMain = findMain(categories, form.catMain);
@@ -165,6 +167,7 @@ function RecordForm({ isEdit, initialForm, categories, calcIcon, onSubmit, onClo
     if(!form.item.trim()) return setFormError("請輸入品項名稱");
     if(!form.catMain)     return setFormError("請選擇分類");
     if(!form.amount||isNaN(form.amount)||+form.amount<=0) return setFormError("請輸入有效金額");
+    if(form.payment==="card"&&!form.creditCard) return setFormError("請選擇使用的信用卡");
     await onSubmit({...form, amount:+form.amount});
   }
 
@@ -235,16 +238,31 @@ function RecordForm({ isEdit, initialForm, categories, calcIcon, onSubmit, onClo
               </div>
             )}
           </div>
-          <div style={{marginBottom:16}}>
+          <div style={{marginBottom:form.payment==="card"?10:16}}>
             <label style={labelSt}>付款方式</label>
             <div style={{display:"flex",gap:8}}>
               {PAYMENT_METHODS.map(p=>(
-                <button key={p.id} onClick={()=>setForm(f=>({...f,payment:p.id}))} style={{...chipSt(form.payment===p.id,T.warm,T.warmLight),flex:1,justifyContent:"center"}}>
+                <button key={p.id} onClick={()=>setForm(f=>({...f,payment:p.id,creditCard:""}))} style={{...chipSt(form.payment===p.id,T.warm,T.warmLight),flex:1,justifyContent:"center"}}>
                   {p.icon} {p.label}
                 </button>
               ))}
             </div>
           </div>
+
+          {/* 信用卡別選擇（付款方式為信用卡時才顯示）*/}
+          {form.payment==="card" && (
+            <div style={{marginBottom:16}}>
+              <label style={labelSt}>信用卡別 *</label>
+              <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
+                {CREDIT_CARDS.map(c=>(
+                  <button key={c} onClick={()=>setForm(f=>({...f,creditCard:c}))}
+                    style={{padding:"6px 12px",borderRadius:10,border:`1.5px solid ${form.creditCard===c?T.warm:T.border}`,background:form.creditCard===c?T.warmLight:"#fff",color:form.creditCard===c?T.warm:T.muted,fontSize:12,fontWeight:form.creditCard===c?700:500,cursor:"pointer",fontFamily:"inherit"}}>
+                    {c}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {formError&&<div style={{fontSize:12,color:T.danger,marginBottom:10,textAlign:"center"}}>{formError}</div>}
 
@@ -480,7 +498,7 @@ export default function App() {
   useEffect(()=>{ const u=onSnapshot(collection(db,"creditBills"),snap=>{ setCreditBills(snap.docs.map(d=>({id:d.id,...d.data()}))); }); return u; },[]);
   useEffect(()=>{ const u=onSnapshot(collection(db,"savingsRecs"),snap=>{ setSavingsRecs(snap.docs.map(d=>({id:d.id,...d.data()}))); }); return u; },[]);
 
-  const CREDIT_CARDS = ["書宇聯邦","書宇匯豐","書宇玉山","書宇台灣銀行","書宇遠東商銀","書宇富邦","晴儀華南","晴儀台新","晴儀中國信託","晴儀星展","晴儀元大","晴儀富邦"];
+  // CREDIT_CARDS defined at top level
   const SAVINGS_BANKS = ["晴儀郵局","晴儀富邦","晴儀將來","晴儀華南","晴儀台新","書宇郵局","書宇台銀"];
 
   const [incomeRecs,     setIncomeRecs]     = useState([]);
@@ -595,7 +613,7 @@ export default function App() {
                         {r.note&&<div style={{fontSize:12,color:T.muted,marginTop:2}}>{r.note}</div>}
                         <div style={{fontSize:11,color:T.muted,marginTop:4,display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}}>
                           <Tag color={T.tagText} bg={T.tagBg}>{main.label}{sub?` › ${sub.label}`:""}</Tag>
-                          <Tag color={T.warm} bg={T.warmLight}>{pay.icon} {pay.label}</Tag>
+                          <Tag color={T.warm} bg={T.warmLight}>{pay.icon} {r.payment==="card"&&r.creditCard ? r.creditCard : pay.label}</Tag>
                           <span>{r.date}</span>
                         </div>
                       </div>
@@ -690,10 +708,10 @@ export default function App() {
                         "日期":r.date,"品項名稱":r.item,"說明":r.note,
                         "大分類":findMain(categories,r.catMain)?.label||"",
                         "小分類":findSub(categories,r.catMain,r.catSub)?.label||"",
-                        "付款方式":payMap[r.payment]?.label||r.payment,"金額 (NT$)":r.amount,
+                        "付款方式":payMap[r.payment]?.label||r.payment,"信用卡別":r.payment==="card"?(r.creditCard||""):"","金額 (NT$)":r.amount,
                       }));
                       const ws=XLSX.utils.json_to_sheet(rows);
-                      ws["!cols"]=[{wch:12},{wch:20},{wch:26},{wch:10},{wch:10},{wch:10},{wch:12}];
+                      ws["!cols"]=[{wch:12},{wch:20},{wch:26},{wch:10},{wch:10},{wch:10},{wch:14},{wch:12}];
                       const wb=XLSX.utils.book_new();
                       XLSX.utils.book_append_sheet(wb,ws,"支出記錄");
                       XLSX.writeFile(wb,`${filename}.xlsx`);
