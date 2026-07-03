@@ -531,6 +531,86 @@ export default function App() {
     setShowSavingsForm(false);
   }
 
+  // ── 預算 ──
+  const [budgets,        setBudgets]        = useState({});  // { catId: amount }
+  const [budgetMonth,    setBudgetMonth]    = useState(today().slice(0,7));
+  const [showBudgetForm, setShowBudgetForm] = useState(false);
+  const [budgetDraft,    setBudgetDraft]    = useState({});
+
+  useEffect(()=>{
+    const u=onSnapshot(doc(db,"settings","budgets"),snap=>{
+      if(snap.exists()) setBudgets(snap.data().data||{});
+    });
+    return u;
+  },[]);
+
+  async function saveBudgets(data) {
+    await setDoc(doc(db,"settings","budgets"),{data});
+    setBudgets(data);
+  }
+
+  // 預算警示：本月各分類花費
+  const budgetAlerts = categories.filter(c=>{
+    const budget = budgets[c.id];
+    if(!budget||+budget<=0) return false;
+    const spent = records.filter(r=>r.date.startsWith(today().slice(0,7))&&r.catMain===c.id).reduce((s,r)=>s+r.amount,0);
+    return (+budget - spent) < 1000;
+  }).map(c=>{
+    const budget = +budgets[c.id]||0;
+    const spent  = records.filter(r=>r.date.startsWith(today().slice(0,7))&&r.catMain===c.id).reduce((s,r)=>s+r.amount,0);
+    return { ...c, budget, spent, remaining: budget-spent };
+  });
+
+  // ── 固定支出 ──
+  const [recurringItems, setRecurringItems] = useState([]);
+  const [showRecurForm,  setShowRecurForm]  = useState(false);
+  const [recurForm,      setRecurForm]      = useState({day:"1",item:"",catMain:"",catSub:"",payment:"cash",creditCard:"",amount:"",note:""});
+  const recurCheckedRef = useRef(false);
+
+  useEffect(()=>{
+    const u=onSnapshot(collection(db,"recurringItems"),snap=>{
+      setRecurringItems(snap.docs.map(d=>({id:d.id,...d.data()})));
+    });
+    return u;
+  },[]);
+
+  // 開啟 App 時自動檢查固定支出
+  useEffect(()=>{
+    if(recurCheckedRef.current||recurringItems.length===0||records.length===0) return;
+    recurCheckedRef.current = true;
+    const currentMonth = today().slice(0,7);
+    const currentDay   = parseInt(today().slice(8,10));
+    recurringItems.forEach(async item=>{
+      const triggerDay = parseInt(item.day);
+      if(currentDay < triggerDay) return; // 還沒到日期
+      // 檢查本月是否已新增過
+      const alreadyAdded = records.some(r=>
+        r.recurringId===item.id && r.date.startsWith(currentMonth)
+      );
+      if(alreadyAdded) return;
+      // 自動新增
+      const targetDate = `${currentMonth}-${String(triggerDay).padStart(2,"0")}`;
+      await addDoc(collection(db,"records"),{
+        date: targetDate,
+        item: item.item,
+        note: item.note||"（固定支出）",
+        catMain: item.catMain,
+        catSub:  item.catSub||"",
+        payment: item.payment,
+        creditCard: item.creditCard||"",
+        amount:  +item.amount,
+        recurringId: item.id,
+      });
+    });
+  },[recurringItems, records]);
+
+  async function addRecurringItem() {
+    if(!recurForm.day||!recurForm.item||!recurForm.catMain||!recurForm.amount||isNaN(recurForm.amount)||+recurForm.amount<=0) return;
+    await addDoc(collection(db,"recurringItems"),{...recurForm,amount:+recurForm.amount});
+    setRecurForm({day:"1",item:"",catMain:"",catSub:"",payment:"cash",creditCard:"",amount:"",note:""});
+    setShowRecurForm(false);
+  }
+
   async function saveCategories(cats) { await setDoc(doc(db,"settings","categories"),{list:cats}); setCategories(cats); }
   async function saveFooterImg(url)   { const c=await compressImage(url,800,0.8); setFooterImg(c); setDoc(doc(db,"settings","footerImg"),{url:c}); }
   function removeFooterImg()          { setFooterImg(null); setDoc(doc(db,"settings","footerImg"),{url:null}); }
@@ -580,7 +660,7 @@ export default function App() {
             </button>
           </div>
           <div style={{display:"flex",borderTop:`1px solid ${T.border}`,overflowX:"auto"}}>
-            {[["home","明細"],["stats","月統計"],["income","月收入"],["credit","信用卡"],["savings","存款"],["settings","設定"]].map(([k,l])=>(
+            {[["home","明細"],["stats","月統計"],["income","月收入"],["credit","信用卡"],["savings","存款"],["budget","預算"],["recurring","固定支出"],["settings","設定"]].map(([k,l])=>(
               <button key={k} onClick={()=>setTab(k)}
                 style={{flex:"0 0 auto",padding:"11px 12px",border:"none",background:"none",cursor:"pointer",fontSize:12,fontWeight:tab===k?700:500,color:tab===k?T.accent:T.muted,borderBottom:tab===k?`2px solid ${T.accent}`:"2px solid transparent",transition:"all 0.15s",fontFamily:"inherit",whiteSpace:"nowrap"}}>
                 {l}
@@ -595,6 +675,20 @@ export default function App() {
           {/* 明細 */}
           {tab==="home" && (
             <>
+              {/* 預算警示 */}
+              {budgetAlerts.length>0 && (
+                <div style={{background:"#FFF0F0",border:"1.5px solid #FFCCCC",borderRadius:14,padding:"10px 14px",marginBottom:12}}>
+                  <div style={{fontSize:12,fontWeight:700,color:"#C0392B",marginBottom:6}}>⚠️ 預算警示（本月）</div>
+                  {budgetAlerts.map(c=>(
+                    <div key={c.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                      <span style={{fontSize:12,color:"#C0392B"}}>{c.icon} {c.label}</span>
+                      <span style={{fontSize:12,fontWeight:700,color:c.remaining<0?"#C0392B":"#E67E22"}}>
+                        {c.remaining<0?`超支 ${fmt(Math.abs(c.remaining))}`:`剩 ${fmt(c.remaining)}`}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
               {filtered.length===0 && (
                 <div style={{textAlign:"center",color:T.muted,padding:"48px 0",fontSize:14}}>
                   <div style={{fontSize:32,marginBottom:10}}>🌿</div>這個月還沒有記錄
@@ -1101,6 +1195,228 @@ export default function App() {
                   </>
                 );
               })()}
+            </>
+          )}
+
+          {/* 預算 */}
+          {tab==="budget" && (
+            <>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                <div style={{fontSize:13,fontWeight:700,color:T.ink}}>本月預算設定</div>
+                <button onClick={()=>{ setBudgetDraft({...budgets}); setShowBudgetForm(v=>!v); }}
+                  style={{padding:"8px 16px",background:showBudgetForm?T.accent:"none",color:showBudgetForm?"#fff":T.accent,border:`1.5px solid ${T.accent}`,borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                  {showBudgetForm?"✕ 取消":"✏️ 編輯預算"}
+                </button>
+              </div>
+
+              {showBudgetForm && (
+                <div style={{...cardSt,background:T.accentLight,marginBottom:14}}>
+                  <div style={{fontSize:12,color:T.muted,marginBottom:12}}>為每個大分類設定本月預算（空白表示不設定）</div>
+                  {categories.map(c=>(
+                    <div key={c.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                      <div style={{display:"flex",alignItems:"center",gap:6,width:80,flexShrink:0}}>
+                        <span style={{fontSize:16}}>{c.icon}</span>
+                        <span style={{fontSize:12,color:T.ink,fontWeight:600}}>{c.label}</span>
+                      </div>
+                      <input type="number" placeholder="不設定" value={budgetDraft[c.id]||""}
+                        onChange={e=>setBudgetDraft(d=>({...d,[c.id]:e.target.value}))}
+                        style={{flex:1,padding:"8px 10px",borderRadius:9,border:`1.5px solid ${T.border}`,fontSize:13,color:T.ink,background:"#fff",outline:"none",textAlign:"right",fontFamily:"inherit"}}/>
+                      <span style={{fontSize:11,color:T.muted,flexShrink:0}}>元</span>
+                    </div>
+                  ))}
+                  <button onClick={async()=>{
+                    const clean={};
+                    Object.entries(budgetDraft).forEach(([k,v])=>{ if(v&&+v>0) clean[k]=+v; });
+                    await saveBudgets(clean);
+                    setShowBudgetForm(false);
+                  }} style={{width:"100%",padding:"11px 0",background:T.accent,color:"#fff",border:"none",borderRadius:11,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit",marginTop:4}}>
+                    儲存預算
+                  </button>
+                </div>
+              )}
+
+              {/* 預算執行狀況 */}
+              {categories.filter(c=>budgets[c.id]>0).length===0 ? (
+                <div style={{textAlign:"center",color:T.muted,padding:"40px 0",fontSize:14}}>
+                  <div style={{fontSize:28,marginBottom:8}}>📊</div>尚未設定任何預算<br/>點上方「編輯預算」開始設定
+                </div>
+              ) : (
+                categories.filter(c=>budgets[c.id]>0).map(c=>{
+                  const budget    = +budgets[c.id];
+                  const spent     = records.filter(r=>r.date.startsWith(filterMonth)&&r.catMain===c.id).reduce((s,r)=>s+r.amount,0);
+                  const remaining = budget - spent;
+                  const pct       = Math.min(100, Math.round((spent/budget)*100));
+                  const isWarn    = remaining < 1000;
+                  const isOver    = remaining < 0;
+                  return (
+                    <div key={c.id} style={{...cardSt,border:isWarn?`1.5px solid ${isOver?"#FFAAAA":"#FFD4A3"}`:"1.5px solid transparent"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                        <div style={{display:"flex",alignItems:"center",gap:7}}>
+                          <CatThumb item={c} size={16} box={30}/>
+                          <span style={{fontSize:13,fontWeight:600,color:T.ink}}>{c.label}</span>
+                          {isOver&&<span style={{fontSize:10,background:"#FFE0E0",color:"#C0392B",borderRadius:5,padding:"1px 6px",fontWeight:700}}>超支</span>}
+                          {!isOver&&isWarn&&<span style={{fontSize:10,background:"#FFF0D0",color:"#E67E22",borderRadius:5,padding:"1px 6px",fontWeight:700}}>快超支</span>}
+                        </div>
+                        <span style={{fontSize:12,color:isOver?"#C0392B":isWarn?"#E67E22":T.muted}}>
+                          剩 {fmt(remaining)}
+                        </span>
+                      </div>
+                      <div style={{height:7,background:T.border,borderRadius:6,overflow:"hidden",marginBottom:6}}>
+                        <div style={{height:"100%",width:`${pct}%`,background:isOver?"#E74C3C":isWarn?"#E67E22":T.accent,borderRadius:6,transition:"width 0.4s ease"}}/>
+                      </div>
+                      <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:T.muted}}>
+                        <span>已花 {fmt(spent)}</span>
+                        <span>預算 {fmt(budget)}</span>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </>
+          )}
+
+          {/* 固定支出 */}
+          {tab==="recurring" && (
+            <>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                <div>
+                  <div style={{fontSize:13,fontWeight:700,color:T.ink}}>固定支出項目</div>
+                  <div style={{fontSize:11,color:T.muted,marginTop:2}}>每月到日期自動新增</div>
+                </div>
+                <button onClick={()=>setShowRecurForm(v=>!v)}
+                  style={{padding:"9px 16px",background:showRecurForm?T.accent:"none",color:showRecurForm?"#fff":T.accent,border:`1.5px solid ${T.accent}`,borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                  {showRecurForm?"✕ 取消":"＋ 新增"}
+                </button>
+              </div>
+
+              {showRecurForm && (
+                <div style={{...cardSt,background:T.accentLight,marginBottom:14}}>
+                  <div style={{fontSize:13,fontWeight:700,color:T.ink,marginBottom:12}}>新增固定支出</div>
+
+                  <div style={{marginBottom:10}}>
+                    <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:4}}>每月幾號自動新增 *</div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                      {[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28].map(d=>(
+                        <button key={d} onClick={()=>setRecurForm(f=>({...f,day:String(d)}))}
+                          style={{width:36,height:36,borderRadius:9,border:`1.5px solid ${recurForm.day===String(d)?T.accent:T.border}`,background:recurForm.day===String(d)?T.accentLight:"#fff",color:recurForm.day===String(d)?T.accent:T.muted,fontSize:13,fontWeight:recurForm.day===String(d)?700:500,cursor:"pointer",fontFamily:"inherit"}}>
+                          {d}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div style={{marginBottom:10}}>
+                    <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:4}}>品項名稱 *</div>
+                    <input type="text" placeholder="例：Netflix" value={recurForm.item} onChange={e=>setRecurForm(f=>({...f,item:e.target.value}))}
+                      style={{width:"100%",padding:"9px 12px",borderRadius:10,border:`1.5px solid ${T.border}`,fontSize:13,color:T.ink,background:"#fff",outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
+                  </div>
+
+                  <div style={{marginBottom:10}}>
+                    <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:6}}>大分類 *</div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                      {categories.map(c=>(
+                        <button key={c.id} onClick={()=>setRecurForm(f=>({...f,catMain:c.id,catSub:""}))}
+                          style={{padding:"6px 11px",borderRadius:9,border:`1.5px solid ${recurForm.catMain===c.id?T.accent:T.border}`,background:recurForm.catMain===c.id?T.accentLight:"#fff",color:recurForm.catMain===c.id?T.accent:T.muted,fontSize:12,fontWeight:recurForm.catMain===c.id?700:500,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}}>
+                          <span>{c.icon}</span>{c.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {recurForm.catMain && findMain(categories,recurForm.catMain)?.sub?.length>0 && (
+                    <div style={{marginBottom:10}}>
+                      <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:6}}>小分類</div>
+                      <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                        {findMain(categories,recurForm.catMain).sub.map(s=>(
+                          <button key={s.id} onClick={()=>setRecurForm(f=>({...f,catSub:s.id}))}
+                            style={{padding:"5px 10px",borderRadius:9,border:`1.5px solid ${recurForm.catSub===s.id?T.accent:T.border}`,background:recurForm.catSub===s.id?T.accentLight:"#EDE8E1",color:recurForm.catSub===s.id?T.accent:T.muted,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>
+                            {s.icon} {s.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{marginBottom:10}}>
+                    <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:6}}>付款方式 *</div>
+                    <div style={{display:"flex",gap:8}}>
+                      {PAYMENT_METHODS.map(p=>(
+                        <button key={p.id} onClick={()=>setRecurForm(f=>({...f,payment:p.id,creditCard:""}))}
+                          style={{flex:1,padding:"8px 0",borderRadius:9,border:`1.5px solid ${recurForm.payment===p.id?T.warm:T.border}`,background:recurForm.payment===p.id?T.warmLight:"#fff",color:recurForm.payment===p.id?T.warm:T.muted,fontSize:12,fontWeight:recurForm.payment===p.id?700:500,cursor:"pointer",fontFamily:"inherit"}}>
+                          {p.icon} {p.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {recurForm.payment==="card" && (
+                    <div style={{marginBottom:10}}>
+                      <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:6}}>信用卡別 *</div>
+                      <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                        {CREDIT_CARDS.map(c=>(
+                          <button key={c} onClick={()=>setRecurForm(f=>({...f,creditCard:c}))}
+                            style={{padding:"5px 10px",borderRadius:9,border:`1.5px solid ${recurForm.creditCard===c?T.warm:T.border}`,background:recurForm.creditCard===c?T.warmLight:"#fff",color:recurForm.creditCard===c?T.warm:T.muted,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>
+                            {c}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{marginBottom:10}}>
+                    <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:4}}>金額（NT$）*</div>
+                    <input type="number" placeholder="0" value={recurForm.amount} onChange={e=>setRecurForm(f=>({...f,amount:e.target.value}))}
+                      style={{width:"100%",padding:"9px 12px",borderRadius:10,border:`1.5px solid ${T.border}`,fontSize:16,fontWeight:700,color:T.ink,background:"#fff",outline:"none",boxSizing:"border-box",fontFamily:"inherit",textAlign:"right"}}/>
+                  </div>
+
+                  <div style={{marginBottom:14}}>
+                    <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:4}}>備註（選填）</div>
+                    <input type="text" placeholder="備注…" value={recurForm.note} onChange={e=>setRecurForm(f=>({...f,note:e.target.value}))}
+                      style={{width:"100%",padding:"9px 12px",borderRadius:10,border:`1.5px solid ${T.border}`,fontSize:13,color:T.ink,background:"#fff",outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
+                  </div>
+
+                  <button onClick={addRecurringItem}
+                    style={{width:"100%",padding:"11px 0",background:T.accent,color:"#fff",border:"none",borderRadius:11,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                    新增固定支出
+                  </button>
+                </div>
+              )}
+
+              {/* 固定支出列表 */}
+              {recurringItems.length===0 ? (
+                <div style={{textAlign:"center",color:T.muted,padding:"40px 0",fontSize:14}}>
+                  <div style={{fontSize:28,marginBottom:8}}>🔄</div>尚未設定固定支出項目
+                </div>
+              ) : (
+                <div style={{background:T.card,borderRadius:16,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,0.04)"}}>
+                  {recurringItems.sort((a,b)=>+a.day-+b.day).map((item,i)=>{
+                    const cat=findMain(categories,item.catMain)||{icon:"✦",label:""};
+                    const pay=PAYMENT_METHODS.find(p=>p.id===item.payment)||PAYMENT_METHODS[0];
+                    return (
+                      <div key={item.id} style={{padding:"12px 14px",borderBottom:i<recurringItems.length-1?`1px solid ${T.border}`:"none",display:"flex",alignItems:"flex-start",gap:10}}>
+                        <div style={{width:36,height:36,borderRadius:10,background:T.accentLight,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                          <span style={{fontSize:12,fontWeight:700,color:T.accent}}>{item.day}日</span>
+                        </div>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontSize:14,fontWeight:600,color:T.ink}}>{item.item}</div>
+                          <div style={{fontSize:11,color:T.muted,marginTop:3,display:"flex",gap:5,flexWrap:"wrap"}}>
+                            <Tag color={T.tagText} bg={T.tagBg}>{cat.icon} {cat.label}</Tag>
+                            <Tag color={T.warm} bg={T.warmLight}>{pay.icon} {item.payment==="card"&&item.creditCard?item.creditCard:pay.label}</Tag>
+                          </div>
+                          {item.note&&<div style={{fontSize:11,color:T.muted,marginTop:3}}>{item.note}</div>}
+                        </div>
+                        <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:5,flexShrink:0}}>
+                          <div style={{fontSize:15,fontWeight:700,color:T.ink}}>{fmt(item.amount)}</div>
+                          <button onClick={()=>deleteDoc(doc(db,"recurringItems",item.id))}
+                            style={{fontSize:11,color:T.muted,background:"none",border:`1px solid ${T.border}`,borderRadius:7,padding:"3px 8px",cursor:"pointer",fontFamily:"inherit"}}>
+                            刪除
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </>
           )}
 
