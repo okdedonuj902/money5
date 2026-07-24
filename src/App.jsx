@@ -604,6 +604,68 @@ export default function App() {
     });
   },[recurringItems, records]);
 
+  // ── 凌亂記錄 (Quick Ledger) ──
+  const [quickEntries,    setQuickEntries]    = useState([]);
+  const [showQuickLedger, setShowQuickLedger] = useState(false);
+  const [quickForm,       setQuickForm]       = useState({name:"",amount:"",note:""});
+  const [quickCalcOpen,   setQuickCalcOpen]   = useState(false);
+  const [quickSaving,     setQuickSaving]     = useState(false);
+
+  useEffect(()=>{
+    const u=onSnapshot(
+      collection(db,"quickLedgerEntries"),
+      snap=>{
+        const docs=snap.docs.map(d=>({id:d.id,...d.data()}));
+        docs.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+        setQuickEntries(docs);
+      }
+    );
+    return u;
+  },[]);
+
+  async function addQuickEntry(){
+    const name=quickForm.name.trim();
+    const amount=quickForm.amount;
+    if(!name&&!amount) return;
+    setQuickSaving(true);
+    try{
+      await addDoc(collection(db,"quickLedgerEntries"),{
+        name, amount: amount===''?0:Number(amount),
+        note:quickForm.note.trim(), done:false, createdAt:Date.now()
+      });
+      setQuickForm({name:"",amount:"",note:""});
+    }finally{ setQuickSaving(false); }
+  }
+
+  async function toggleQuickDone(id, done){
+    const {setDoc:_s,..._}={}; // unused — using imported setDoc
+    await setDoc(doc(db,"quickLedgerEntries",id),{done},{ merge:true });
+  }
+
+  function fmtQuickTime(ts){
+    const d=new Date(ts);
+    const mm=d.getMonth()+1, dd=d.getDate();
+    let h=d.getHours();
+    const m=d.getMinutes().toString().padStart(2,"0");
+    const ap=h<12?"上午":"下午";
+    h=h%12; if(h===0)h=12;
+    return `${mm}/${dd} ${ap}${h}:${m}`;
+  }
+
+  function hashRotate(id){
+    let hash=0;
+    for(let i=0;i<id.length;i++){ hash=(hash*31+id.charCodeAt(i))|0; }
+    return (Math.abs(hash)%7)-3;
+  }
+
+  const QUICK_COLORS=[
+    {bg:"#FFE3EC",pin:"#FF6B95"},
+    {bg:"#FFF3CE",pin:"#FFC53D"},
+    {bg:"#DFF7EF",pin:"#4FCBAE"},
+    {bg:"#EBE2FF",pin:"#A88CFF"},
+    {bg:"#FFE8D6",pin:"#E0956A"},
+  ];
+
   async function addRecurringItem() {
     if(!recurForm.day||!recurForm.item||!recurForm.catMain||!recurForm.amount||isNaN(recurForm.amount)||+recurForm.amount<=0) return;
     await addDoc(collection(db,"recurringItems"),{...recurForm,amount:+recurForm.amount});
@@ -653,10 +715,14 @@ export default function App() {
               {monthOpts.map(m=><option key={m} value={m}>{m.replace("-","年")}月</option>)}
             </select>
           </div>
-          <div style={{marginBottom:14}}>
+          <div style={{display:"flex",gap:8,marginBottom:14}}>
             <button onClick={()=>setFormState({mode:"add"})}
-              style={{width:"100%",padding:"12px 0",background:T.accent,color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:700,cursor:"pointer",letterSpacing:0.5,fontFamily:"inherit",boxShadow:`0 3px 10px ${T.accent}44`}}>
+              style={{flex:1,padding:"12px 0",background:T.accent,color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:700,cursor:"pointer",letterSpacing:0.5,fontFamily:"inherit",boxShadow:`0 3px 10px ${T.accent}44`}}>
               ＋ 新增支出
+            </button>
+            <button onClick={()=>setShowQuickLedger(true)}
+              style={{flexShrink:0,padding:"12px 14px",background:"#FFF3CE",color:"#B8860B",border:"2px dashed #FFD874",borderRadius:12,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>
+              📝 凌亂記錄
             </button>
           </div>
           <div style={{display:"flex",borderTop:`1px solid ${T.border}`,overflowX:"auto"}}>
@@ -1437,6 +1503,145 @@ export default function App() {
           onSubmit={formState.mode==="edit" ? handleEdit : handleAdd}
           onClose={()=>setFormState(null)}
         />
+      )}
+
+      {/* 凌亂記錄 Modal */}
+      {showQuickLedger && (
+        <div style={{position:"fixed",inset:0,zIndex:1300,overflowY:"auto",
+          background:"radial-gradient(circle at 1px 1px,#EFE4D2 1.5px,transparent 1.5px) 0 0/22px 22px, #FFF8EC",
+          fontFamily:"'Nunito','Noto Sans TC',sans-serif"}}>
+          <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+
+          {/* 頂部標題列 */}
+          <div style={{background:"rgba(255,248,236,0.92)",backdropFilter:"blur(8px)",padding:"16px 18px 12px",position:"sticky",top:0,zIndex:10,display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:"2px dashed #EAE0D1"}}>
+            <div>
+              <div style={{fontFamily:"'Baloo 2',sans-serif",fontWeight:800,fontSize:22,color:"#4A3B32",letterSpacing:0.5}}>
+                📝 凌亂記錄
+              </div>
+              <div style={{fontSize:11,color:"#8A7A6D",fontWeight:600,marginTop:1}}>快速記下，之後再整理</div>
+            </div>
+            <button onClick={()=>setShowQuickLedger(false)}
+              style={{background:"rgba(255,107,149,0.12)",border:"none",borderRadius:10,padding:"8px 14px",fontSize:13,fontWeight:800,color:"#FF6B95",cursor:"pointer",fontFamily:"inherit"}}>
+              ✕ 關閉
+            </button>
+          </div>
+
+          {/* 輸入區 */}
+          <div style={{maxWidth:420,margin:"18px auto 0",padding:"0 16px"}}>
+            <div style={{background:"#FFFDF7",borderRadius:22,padding:"20px 18px 16px",boxShadow:"0 10px 24px rgba(74,59,50,0.12)",border:"2px dashed #EAE0D1",position:"relative"}}>
+              <div style={{position:"absolute",top:-14,left:18,fontSize:22,background:"#FFF8EC",padding:"2px 8px",borderRadius:"50%"}}>✏️</div>
+              
+              <div style={{marginBottom:10}}>
+                <div style={{fontSize:12,fontWeight:800,color:"#8A7A6D",marginBottom:5,letterSpacing:0.3}}>品項名稱</div>
+                <input value={quickForm.name} onChange={e=>setQuickForm(f=>({...f,name:e.target.value}))}
+                  onKeyDown={e=>{ if(e.key==="Enter"){ e.preventDefault(); addQuickEntry(); } }}
+                  placeholder="買了什麼？"
+                  style={{width:"100%",border:"2px solid #EAE0D1",borderRadius:14,padding:"10px 12px",fontFamily:"'Nunito',sans-serif",fontSize:15,fontWeight:600,color:"#4A3B32",background:"#fff",outline:"none",boxSizing:"border-box"}}/>
+              </div>
+
+              <div style={{marginBottom:10}}>
+                <div style={{fontSize:12,fontWeight:800,color:"#8A7A6D",marginBottom:5}}>金額</div>
+                <div style={{display:"flex",gap:8}}>
+                  <input type="number" value={quickForm.amount} onChange={e=>setQuickForm(f=>({...f,amount:e.target.value}))}
+                    onKeyDown={e=>{ if(e.key==="Enter"){ e.preventDefault(); addQuickEntry(); } }}
+                    placeholder="0"
+                    style={{flex:1,border:"2px solid #EAE0D1",borderRadius:14,padding:"10px 12px",fontFamily:"'Baloo 2',sans-serif",fontSize:19,fontWeight:700,color:"#4A3B32",background:"#fff",outline:"none",textAlign:"right"}}/>
+                  <button onClick={()=>setQuickCalcOpen(true)}
+                    style={{flexShrink:0,width:46,border:"2px solid #EAE0D1",borderRadius:14,background:"#C6B4FF",fontSize:20,cursor:"pointer",transition:"transform 0.12s"}}>
+                    🧮
+                  </button>
+                </div>
+              </div>
+
+              <div style={{marginBottom:14}}>
+                <div style={{fontSize:12,fontWeight:800,color:"#8A7A6D",marginBottom:5}}>備註（選填）</div>
+                <textarea value={quickForm.note} onChange={e=>setQuickForm(f=>({...f,note:e.target.value}))}
+                  placeholder="補充說明…" rows={2}
+                  style={{width:"100%",border:"2px solid #EAE0D1",borderRadius:14,padding:"10px 12px",fontFamily:"'Nunito',sans-serif",fontSize:14,fontWeight:600,color:"#4A3B32",background:"#fff",outline:"none",resize:"none",boxSizing:"border-box"}}/>
+              </div>
+
+              <button onClick={addQuickEntry} disabled={quickSaving}
+                style={{width:"100%",padding:13,border:"none",borderRadius:16,background:"linear-gradient(135deg,#FF8FAB,#FF6B95)",color:"#fff",fontFamily:"'Baloo 2',sans-serif",fontWeight:700,fontSize:17,cursor:"pointer",boxShadow:"0 6px 14px rgba(255,107,149,0.35)",opacity:quickSaving?0.7:1}}>
+                {quickSaving?"儲存中…":"＋ 記下這筆"}
+              </button>
+            </div>
+
+            {/* 統計列 */}
+            {quickEntries.filter(e=>!e.done).length>0 && (
+              <div style={{display:"flex",justifyContent:"space-between",padding:"10px 4px",fontSize:13,fontWeight:800,color:"#8A7A6D",maxWidth:420,margin:"0 auto"}}>
+                <span>待整理 <span style={{color:"#FF6B95",fontFamily:"'Baloo 2',sans-serif",fontSize:15}}>{quickEntries.filter(e=>!e.done).length}</span> 筆</span>
+                <span>合計 <span style={{color:"#FF6B95",fontFamily:"'Baloo 2',sans-serif",fontSize:15}}>${quickEntries.filter(e=>!e.done).reduce((s,e)=>s+(Number(e.amount)||0),0).toLocaleString()}</span></span>
+              </div>
+            )}
+
+            {/* 卡片牆 */}
+            <div style={{paddingBottom:40}}>
+              {quickEntries.length===0 && (
+                <div style={{textAlign:"center",color:"#8A7A6D",fontWeight:700,padding:"40px 20px",fontSize:15}}>
+                  <span style={{fontSize:44,display:"block",marginBottom:8}}>🗒️</span>
+                  還沒有記錄，快記一筆！
+                </div>
+              )}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:"16px 14px",marginTop:8}}>
+                {[...quickEntries].sort((a,b)=>{
+                  if(!!a.done!==!!b.done) return a.done?1:-1;
+                  return (b.createdAt||0)-(a.createdAt||0);
+                }).map((entry,idx)=>{
+                  const col=QUICK_COLORS[idx%5];
+                  const rot=hashRotate(entry.id);
+                  return (
+                    <div key={entry.id}
+                      style={{background:col.bg,borderRadius:14,padding:"16px 14px 12px",position:"relative",boxShadow:"0 6px 14px rgba(74,59,50,0.14)",transform:`rotate(${rot}deg)`,opacity:entry.done?0.55:1,display:"flex",flexDirection:"column",minHeight:100}}>
+                      {/* 圖釘 */}
+                      <div style={{position:"absolute",top:-9,left:"50%",transform:"translateX(-50%)",width:16,height:16,borderRadius:"50%",background:`radial-gradient(circle at 35% 30%,#fff,${col.pin} 60%)`,boxShadow:"0 2px 4px rgba(0,0,0,0.25)"}}/>
+
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:6}}>
+                        <div style={{fontFamily:"'Baloo 2',sans-serif",fontWeight:700,fontSize:15,lineHeight:1.25,wordBreak:"break-word",textDecoration:entry.done?"line-through":"none",color:"#4A3B32"}}>
+                          {entry.name||"未命名"}
+                        </div>
+                      </div>
+
+                      <div style={{fontFamily:"'Baloo 2',sans-serif",fontWeight:800,fontSize:20,margin:"5px 0 3px",textDecoration:entry.done?"line-through":"none",color:"#4A3B32"}}>
+                        ${Number(entry.amount||0).toLocaleString()}
+                      </div>
+
+                      {entry.note&&(
+                        <div style={{fontSize:12,color:"#8A7A6D",fontWeight:600,lineHeight:1.4,flex:1,wordBreak:"break-word"}}>{entry.note}</div>
+                      )}
+
+                      <div style={{fontSize:11,color:"#8A7A6D",fontWeight:700,marginTop:7,opacity:0.8}}>
+                        {entry.createdAt?fmtQuickTime(entry.createdAt):""}
+                      </div>
+
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:8}}>
+                        <label style={{display:"flex",alignItems:"center",gap:4,fontSize:12,fontWeight:800,color:"#8A7A6D",cursor:"pointer",userSelect:"none"}}>
+                          <input type="checkbox" checked={!!entry.done}
+                            onChange={e=>toggleQuickDone(entry.id,e.target.checked)}
+                            style={{width:15,height:15,cursor:"pointer",accentColor:"#4FCBAE"}}/>
+                          已登記
+                        </label>
+                        <button onClick={()=>deleteDoc(doc(db,"quickLedgerEntries",entry.id))}
+                          style={{border:"none",background:"rgba(255,255,255,0.6)",width:26,height:26,borderRadius:"50%",fontSize:13,cursor:"pointer",color:"#8A7A6D",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* 計算機 */}
+          {quickCalcOpen && (
+            <Calculator
+              initial={quickForm.amount}
+              calcIcon={calcIcon}
+              onConfirm={v=>{ setQuickForm(f=>({...f,amount:String(v)})); setQuickCalcOpen(false); }}
+              onClose={()=>setQuickCalcOpen(false)}
+            />
+          )}
+        </div>
       )}
     </div>
   );
