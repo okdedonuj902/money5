@@ -151,7 +151,7 @@ function Calculator({ initial="", calcIcon, onConfirm, onClose }) {
 // ══════════════════════════════════════════════════════
 // 支出表單（新增 & 編輯共用）
 // ══════════════════════════════════════════════════════
-const CREDIT_CARDS = ["書宇聯邦","書宇匯豐","書宇玉山","書宇台灣銀行","書宇遠東商銀","書宇富邦","晴儀華南","晴儀台新","晴儀中國信託","晴儀星展","晴儀元大","晴儀富邦"];
+const DEFAULT_CREDIT_CARDS = ["書宇聯邦","書宇匯豐","書宇玉山","書宇台灣銀行","書宇遠東商銀","書宇富邦","晴儀華南","晴儀台新","晴儀中國信託","晴儀星展","晴儀元大","晴儀富邦"];
 
 function RecordForm({ isEdit, initialForm, categories, calcIcon, onSubmit, onClose }) {
   const [form,      setForm]      = useState({ date:today(), item:"", note:"", catMain:"", catSub:"", payment:"cash", creditCard:"", amount:"", ...initialForm });
@@ -254,7 +254,7 @@ function RecordForm({ isEdit, initialForm, categories, calcIcon, onSubmit, onClo
             <div style={{marginBottom:16}}>
               <label style={labelSt}>信用卡別 *</label>
               <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
-                {CREDIT_CARDS.map(c=>(
+                {creditCards.map(c=>(
                   <button key={c} onClick={()=>setForm(f=>({...f,creditCard:c}))}
                     style={{padding:"6px 12px",borderRadius:10,border:`1.5px solid ${form.creditCard===c?T.warm:T.border}`,background:form.creditCard===c?T.warmLight:"#fff",color:form.creditCard===c?T.warm:T.muted,fontSize:12,fontWeight:form.creditCard===c?700:500,cursor:"pointer",fontFamily:"inherit"}}>
                     {c}
@@ -464,6 +464,65 @@ function SettingsTab({ categories, onSaveCategories, calcIcon, setCalcIcon }) {
 // ══════════════════════════════════════════════════════
 // 主 App
 // ══════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════
+// 信用卡管理元件
+// ══════════════════════════════════════════════════════
+function CreditCardManager({ creditCards, onSave, accentLight, accent, warm, warmLight, border, ink, muted, bg, card }) {
+  const [show,     setShow]     = useState(false);
+  const [newCard,  setNewCard]  = useState("");
+  const [list,     setList]     = useState(creditCards);
+
+  useEffect(()=>{ setList(creditCards); }, [creditCards]);
+
+  async function handleSave() {
+    await onSave(list);
+    setShow(false);
+  }
+
+  return (
+    <div style={{marginBottom:14}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:show?10:0}}>
+        <div style={{fontSize:11,color:muted,fontWeight:600}}>共 {creditCards.length} 張信用卡</div>
+        <button onClick={()=>setShow(v=>!v)}
+          style={{padding:"6px 14px",background:show?accent:"none",color:show?"#fff":accent,border:`1.5px solid ${accent}`,borderRadius:9,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+          {show?"✕ 取消":"⚙️ 管理信用卡"}
+        </button>
+      </div>
+
+      {show && (
+        <div style={{background:accentLight,borderRadius:14,padding:"14px",boxShadow:"0 1px 4px rgba(0,0,0,0.04)"}}>
+          <div style={{fontSize:12,fontWeight:700,color:ink,marginBottom:10}}>信用卡清單</div>
+          <div style={{marginBottom:12}}>
+            {list.map((c,i)=>(
+              <div key={c} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 10px",background:"#fff",borderRadius:9,marginBottom:6,border:`1px solid ${border}`}}>
+                <span style={{fontSize:13,color:ink,fontWeight:500}}>💳 {c}</span>
+                <button onClick={()=>setList(l=>l.filter((_,j)=>j!==i))}
+                  style={{fontSize:12,color:muted,background:"none",border:`1px solid ${border}`,borderRadius:6,padding:"2px 8px",cursor:"pointer",fontFamily:"inherit"}}>
+                  刪除
+                </button>
+              </div>
+            ))}
+          </div>
+          {/* 新增 */}
+          <div style={{display:"flex",gap:8,marginBottom:12}}>
+            <input value={newCard} onChange={e=>setNewCard(e.target.value)}
+              onKeyDown={e=>{ if(e.key==="Enter"&&newCard.trim()){ setList(l=>[...l,newCard.trim()]); setNewCard(""); } }}
+              placeholder="新增信用卡名稱" style={{flex:1,padding:"8px 10px",borderRadius:9,border:`1.5px solid ${border}`,fontSize:13,color:ink,background:"#fff",outline:"none",fontFamily:"inherit"}}/>
+            <button onClick={()=>{ if(newCard.trim()){ setList(l=>[...l,newCard.trim()]); setNewCard(""); } }}
+              style={{padding:"8px 14px",background:accent,color:"#fff",border:"none",borderRadius:9,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
+              新增
+            </button>
+          </div>
+          <button onClick={handleSave}
+            style={{width:"100%",padding:"10px 0",background:accent,color:"#fff",border:"none",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+            儲存信用卡清單
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const [records,     setRecords]     = useState([]);
   const [categories,  setCategories]  = useState(DEFAULT_CATEGORIES);
@@ -498,7 +557,7 @@ export default function App() {
   useEffect(()=>{ const u=onSnapshot(collection(db,"creditBills"),snap=>{ setCreditBills(snap.docs.map(d=>({id:d.id,...d.data()}))); }); return u; },[]);
   useEffect(()=>{ const u=onSnapshot(collection(db,"savingsRecs"),snap=>{ setSavingsRecs(snap.docs.map(d=>({id:d.id,...d.data()}))); }); return u; },[]);
 
-  // CREDIT_CARDS defined at top level
+  // creditCards managed via state
   const SAVINGS_BANKS = ["晴儀郵局","晴儀富邦","晴儀將來","晴儀華南","晴儀台新","書宇郵局","書宇台銀"];
 
   const [incomeRecs,     setIncomeRecs]     = useState([]);
@@ -533,20 +592,42 @@ export default function App() {
 
   // ── 預算 ──
   const [budgets,        setBudgets]        = useState({});  // { catId: amount }
+  const [totalBudget,    setTotalBudget]    = useState(0);   // 月總預算
   const [budgetMonth,    setBudgetMonth]    = useState(today().slice(0,7));
   const [showBudgetForm, setShowBudgetForm] = useState(false);
   const [budgetDraft,    setBudgetDraft]    = useState({});
+  const [totalBudgetDraft, setTotalBudgetDraft] = useState("");
+
+  // 信用卡清單（可自訂）
+  const [creditCards,    setCreditCards]    = useState(DEFAULT_CREDIT_CARDS);
+  const [newCardInput,   setNewCardInput]   = useState("");
 
   useEffect(()=>{
     const u=onSnapshot(doc(db,"settings","budgets"),snap=>{
-      if(snap.exists()) setBudgets(snap.data().data||{});
+      if(snap.exists()){
+        setBudgets(snap.data().data||{});
+        setTotalBudget(snap.data().total||0);
+      }
     });
     return u;
   },[]);
 
-  async function saveBudgets(data) {
-    await setDoc(doc(db,"settings","budgets"),{data});
+  useEffect(()=>{
+    const u=onSnapshot(doc(db,"settings","creditCards"),snap=>{
+      if(snap.exists()&&snap.data().list?.length>0) setCreditCards(snap.data().list);
+    });
+    return u;
+  },[]);
+
+  async function saveBudgets(data, total) {
+    await setDoc(doc(db,"settings","budgets"),{data, total:+total||0});
     setBudgets(data);
+    setTotalBudget(+total||0);
+  }
+
+  async function saveCreditCards(list) {
+    await setDoc(doc(db,"settings","creditCards"),{list});
+    setCreditCards(list);
   }
 
   // 預算警示：本月各分類花費
@@ -726,7 +807,7 @@ export default function App() {
             </button>
           </div>
           <div style={{display:"flex",borderTop:`1px solid ${T.border}`,overflowX:"auto"}}>
-            {[["home","明細"],["stats","月統計"],["income","月收入"],["credit","信用卡"],["savings","存款"],["budget","預算"],["recurring","固定支出"],["settings","設定"]].map(([k,l])=>(
+            {[["home","明細"],["income","月收入"],["credit","信用卡"],["savings","存款"],["budget","預算"],["recurring","固定支出"],["settings","設定"]].map(([k,l])=>(
               <button key={k} onClick={()=>setTab(k)}
                 style={{flex:"0 0 auto",padding:"11px 12px",border:"none",background:"none",cursor:"pointer",fontSize:12,fontWeight:tab===k?700:500,color:tab===k?T.accent:T.muted,borderBottom:tab===k?`2px solid ${T.accent}`:"2px solid transparent",transition:"all 0.15s",fontFamily:"inherit",whiteSpace:"nowrap"}}>
                 {l}
@@ -741,6 +822,34 @@ export default function App() {
           {/* 明細 */}
           {tab==="home" && (
             <>
+              {/* 月總預算進度 */}
+              {totalBudget>0 && (()=>{
+                const thisMonthTotal = records.filter(r=>r.date.startsWith(today().slice(0,7))).reduce((s,r)=>s+r.amount,0);
+                const remaining = totalBudget - thisMonthTotal;
+                const pct = Math.min(100, Math.round((thisMonthTotal/totalBudget)*100));
+                const isOver = remaining < 0;
+                const isWarn = !isOver && remaining < 1000;
+                return (
+                  <div style={{background:isOver?"#FFF0F0":isWarn?"#FFF8EE":T.accentLight,border:`1.5px solid ${isOver?"#FFCCCC":isWarn?"#FFD4A3":T.accent+"44"}`,borderRadius:14,padding:"12px 14px",marginBottom:12}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                      <div style={{fontSize:12,fontWeight:700,color:isOver?"#C0392B":isWarn?"#E67E22":T.accent}}>
+                        {isOver?"🚨 本月已超支":"💰 本月預算剩餘"}
+                      </div>
+                      <div style={{fontSize:15,fontWeight:800,color:isOver?"#C0392B":isWarn?"#E67E22":T.accent}}>
+                        {isOver?`超支 ${fmt(Math.abs(remaining))}`:fmt(remaining)}
+                      </div>
+                    </div>
+                    <div style={{height:7,background:"rgba(0,0,0,0.07)",borderRadius:6,overflow:"hidden",marginBottom:6}}>
+                      <div style={{height:"100%",width:`${pct}%`,background:isOver?"#E74C3C":isWarn?"#E67E22":T.accent,borderRadius:6,transition:"width 0.4s"}}/>
+                    </div>
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:T.muted}}>
+                      <span>已花費 {fmt(thisMonthTotal)}</span>
+                      <span>月預算 {fmt(totalBudget)}</span>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* 預算警示 */}
               {budgetAlerts.length>0 && (
                 <div style={{background:"#FFF0F0",border:"1.5px solid #FFCCCC",borderRadius:14,padding:"10px 14px",marginBottom:12}}>
@@ -1078,6 +1187,11 @@ export default function App() {
           {/* 信用卡 */}
           {tab==="credit" && (
             <>
+              {/* 信用卡管理 */}
+              <CreditCardManager creditCards={creditCards} onSave={saveCreditCards}
+                accentLight={T.accentLight} accent={T.accent} warm={T.warm} warmLight={T.warmLight}
+                border={T.border} ink={T.ink} muted={T.muted} bg={T.bg} card={T.card}/>
+
               {/* 月份篩選 + 新增按鈕 */}
               <div style={{display:"flex",gap:8,marginBottom:14,alignItems:"center"}}>
                 <select value={creditFilterMonth} onChange={e=>setCreditFilterMonth(e.target.value)}
@@ -1107,7 +1221,7 @@ export default function App() {
                     <select value={creditForm.card} onChange={e=>setCreditForm(f=>({...f,card:e.target.value}))}
                       style={{width:"100%",padding:"9px 12px",borderRadius:10,border:`1.5px solid ${T.border}`,fontSize:13,color:creditForm.card?T.ink:T.muted,background:"#fff",outline:"none",fontFamily:"inherit"}}>
                       <option value="">請選擇信用卡</option>
-                      {CREDIT_CARDS.map(c=><option key={c} value={c}>{c}</option>)}
+                      {creditCards.map(c=><option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
                   <div style={{marginBottom:10}}>
@@ -1268,8 +1382,8 @@ export default function App() {
           {tab==="budget" && (
             <>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-                <div style={{fontSize:13,fontWeight:700,color:T.ink}}>本月預算設定</div>
-                <button onClick={()=>{ setBudgetDraft({...budgets}); setShowBudgetForm(v=>!v); }}
+                <div style={{fontSize:13,fontWeight:700,color:T.ink}}>預算設定</div>
+                <button onClick={()=>{ setBudgetDraft({...budgets}); setTotalBudgetDraft(totalBudget?String(totalBudget):""); setShowBudgetForm(v=>!v); }}
                   style={{padding:"8px 16px",background:showBudgetForm?T.accent:"none",color:showBudgetForm?"#fff":T.accent,border:`1.5px solid ${T.accent}`,borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                   {showBudgetForm?"✕ 取消":"✏️ 編輯預算"}
                 </button>
@@ -1277,7 +1391,20 @@ export default function App() {
 
               {showBudgetForm && (
                 <div style={{...cardSt,background:T.accentLight,marginBottom:14}}>
-                  <div style={{fontSize:12,color:T.muted,marginBottom:12}}>為每個大分類設定本月預算（空白表示不設定）</div>
+                  {/* 月總預算 */}
+                  <div style={{marginBottom:14,paddingBottom:14,borderBottom:`1px solid ${T.border}`}}>
+                    <div style={{fontSize:12,fontWeight:700,color:T.ink,marginBottom:8}}>📌 月總支出預算</div>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <input type="number" placeholder="不設定" value={totalBudgetDraft}
+                        onChange={e=>setTotalBudgetDraft(e.target.value)}
+                        style={{flex:1,padding:"10px 12px",borderRadius:10,border:`1.5px solid ${T.border}`,fontSize:18,fontWeight:700,color:T.ink,background:"#fff",outline:"none",textAlign:"right",fontFamily:"inherit"}}/>
+                      <span style={{fontSize:12,color:T.muted,flexShrink:0}}>元／月</span>
+                    </div>
+                    <div style={{fontSize:11,color:T.muted,marginTop:5}}>設定後首頁會顯示本月花費進度</div>
+                  </div>
+                  {/* 分類預算 */}
+                  <div style={{fontSize:12,fontWeight:700,color:T.ink,marginBottom:8}}>📂 各分類預算</div>
+                  <div style={{fontSize:11,color:T.muted,marginBottom:10}}>空白表示該分類不設上限</div>
                   {categories.map(c=>(
                     <div key={c.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
                       <div style={{display:"flex",alignItems:"center",gap:6,width:80,flexShrink:0}}>
@@ -1293,13 +1420,42 @@ export default function App() {
                   <button onClick={async()=>{
                     const clean={};
                     Object.entries(budgetDraft).forEach(([k,v])=>{ if(v&&+v>0) clean[k]=+v; });
-                    await saveBudgets(clean);
+                    await saveBudgets(clean, totalBudgetDraft);
                     setShowBudgetForm(false);
                   }} style={{width:"100%",padding:"11px 0",background:T.accent,color:"#fff",border:"none",borderRadius:11,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit",marginTop:4}}>
                     儲存預算
                   </button>
                 </div>
               )}
+
+              {/* 月總預算卡片 */}
+              {totalBudget>0 && !showBudgetForm && (()=>{
+                const thisMonthTotal = records.filter(r=>r.date.startsWith(filterMonth)).reduce((s,r)=>s+r.amount,0);
+                const remaining = totalBudget - thisMonthTotal;
+                const pct = Math.min(100, Math.round((thisMonthTotal/totalBudget)*100));
+                const isOver = remaining < 0;
+                const isWarn = !isOver && remaining < 1000;
+                return (
+                  <div style={{...cardSt,background:isOver?"#FFF0F0":isWarn?"#FFF8EE":"#EDF6EF",marginBottom:14,border:`1.5px solid ${isOver?"#FFCCCC":isWarn?"#FFD4A3":T.accent+"55"}`}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+                      <div>
+                        <div style={{fontSize:11,color:T.muted,fontWeight:600,marginBottom:3}}>月總預算剩餘</div>
+                        <div style={{fontSize:22,fontWeight:700,color:isOver?"#C0392B":isWarn?"#E67E22":T.accent}}>
+                          {isOver?`超支 ${fmt(Math.abs(remaining))}`:fmt(remaining)}
+                        </div>
+                      </div>
+                      <div style={{textAlign:"right"}}>
+                        <div style={{fontSize:11,color:T.muted,fontWeight:600,marginBottom:3}}>已花費</div>
+                        <div style={{fontSize:18,fontWeight:700,color:T.ink}}>{fmt(thisMonthTotal)}</div>
+                      </div>
+                    </div>
+                    <div style={{height:8,background:"rgba(0,0,0,0.07)",borderRadius:6,overflow:"hidden",marginBottom:5}}>
+                      <div style={{height:"100%",width:`${pct}%`,background:isOver?"#E74C3C":isWarn?"#E67E22":T.accent,borderRadius:6,transition:"width 0.4s"}}/>
+                    </div>
+                    <div style={{fontSize:11,color:T.muted,textAlign:"right"}}>月預算 {fmt(totalBudget)}（{pct}%）</div>
+                  </div>
+                );
+              })()}
 
               {/* 預算執行狀況 */}
               {categories.filter(c=>budgets[c.id]>0).length===0 ? (
@@ -1419,7 +1575,7 @@ export default function App() {
                     <div style={{marginBottom:10}}>
                       <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:6}}>信用卡別 *</div>
                       <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                        {CREDIT_CARDS.map(c=>(
+                        {creditCards.map(c=>(
                           <button key={c} onClick={()=>setRecurForm(f=>({...f,creditCard:c}))}
                             style={{padding:"5px 10px",borderRadius:9,border:`1.5px solid ${recurForm.creditCard===c?T.warm:T.border}`,background:recurForm.creditCard===c?T.warmLight:"#fff",color:recurForm.creditCard===c?T.warm:T.muted,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>
                             {c}
