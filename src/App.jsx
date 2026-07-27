@@ -533,6 +533,7 @@ export default function App() {
   // formState: null | { mode:"add" } | { mode:"edit", record:{...} }
   const [formState,   setFormState]   = useState(null);
   const [filterMonth,  setFilterMonth]  = useState(today().slice(0,7));
+  const [filterCat,    setFilterCat]    = useState(""); // "" = 全部
   const [showExport,   setShowExport]   = useState(false);
   const [exportFrom,   setExportFrom]   = useState("");
   const [exportTo,     setExportTo]     = useState("");
@@ -765,7 +766,7 @@ export default function App() {
     setFormState(null);
   }
 
-  const filtered   = records.filter(r=>r.date.startsWith(filterMonth)).sort((a,b)=>b.date.localeCompare(a.date));
+  const filtered   = records.filter(r=>r.date.startsWith(filterMonth)&&(!filterCat||r.catMain===filterCat)).sort((a,b)=>b.date.localeCompare(a.date));
   const totalMonth = filtered.reduce((s,r)=>s+r.amount,0);
   const catStats   = categories.map(c=>({...c,total:filtered.filter(r=>r.catMain===c.id).reduce((s,r)=>s+r.amount,0)})).filter(c=>c.total>0).sort((a,b)=>b.total-a.total);
   const maxStat    = catStats[0]?.total||1;
@@ -864,9 +865,36 @@ export default function App() {
                   ))}
                 </div>
               )}
+              {/* 分類篩選列 */}
+              <div style={{display:"flex",gap:6,marginBottom:12,overflowX:"auto",paddingBottom:2}}>
+                <button onClick={()=>setFilterCat("")}
+                  style={{flexShrink:0,padding:"6px 14px",borderRadius:20,border:`1.5px solid ${filterCat===""?T.accent:T.border}`,background:filterCat===""?T.accent:"#fff",color:filterCat===""?"#fff":T.muted,fontSize:12,fontWeight:filterCat===""?700:500,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>
+                  全部
+                </button>
+                {categories.map(c=>(
+                  <button key={c.id} onClick={()=>setFilterCat(filterCat===c.id?"":c.id)}
+                    style={{flexShrink:0,display:"flex",alignItems:"center",gap:4,padding:"6px 12px",borderRadius:20,border:`1.5px solid ${filterCat===c.id?T.accent:T.border}`,background:filterCat===c.id?T.accentLight:"#fff",color:filterCat===c.id?T.accent:T.muted,fontSize:12,fontWeight:filterCat===c.id?700:500,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>
+                    <span>{c.icon}</span>{c.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* 篩選結果標題 */}
+              {filterCat && (()=>{
+                const cat = findMain(categories, filterCat);
+                const catTotal = filtered.reduce((s,r)=>s+r.amount,0);
+                return cat ? (
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,padding:"8px 12px",background:T.accentLight,borderRadius:11}}>
+                    <span style={{fontSize:13,fontWeight:700,color:T.accent}}>{cat.icon} {cat.label}</span>
+                    <span style={{fontSize:13,fontWeight:700,color:T.accent}}>{filtered.length} 筆 · {fmt(catTotal)}</span>
+                  </div>
+                ) : null;
+              })()}
+
               {filtered.length===0 && (
                 <div style={{textAlign:"center",color:T.muted,padding:"48px 0",fontSize:14}}>
-                  <div style={{fontSize:32,marginBottom:10}}>🌿</div>這個月還沒有記錄
+                  <div style={{fontSize:32,marginBottom:10}}>🌿</div>
+                  {filterCat ? "這個分類本月沒有記錄" : "這個月還沒有記錄"}
                 </div>
               )}
               {filtered.map(r=>{
