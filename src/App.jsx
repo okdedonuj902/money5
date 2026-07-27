@@ -153,7 +153,7 @@ function Calculator({ initial="", calcIcon, onConfirm, onClose }) {
 // ══════════════════════════════════════════════════════
 const DEFAULT_CREDIT_CARDS = ["書宇聯邦","書宇匯豐","書宇玉山","書宇台灣銀行","書宇遠東商銀","書宇富邦","晴儀華南","晴儀台新","晴儀中國信託","晴儀星展","晴儀元大","晴儀富邦"];
 
-function RecordForm({ isEdit, initialForm, categories, calcIcon, onSubmit, onClose }) {
+function RecordForm({ isEdit, initialForm, categories, calcIcon, creditCards, onSubmit, onClose }) {
   const [form,      setForm]      = useState({ date:today(), item:"", note:"", catMain:"", catSub:"", payment:"cash", creditCard:"", amount:"", ...initialForm });
   const [formError, setFormError] = useState("");
   const [showCalc,  setShowCalc]  = useState(false);
@@ -475,29 +475,29 @@ function CompareModal({
   addCompareItem, addComparePrice, onClose, db, T, cardSt, fmt
 }) {
   return (
-    <div style={{position:"fixed",inset:0,background:"rgba(44,44,44,0.45)",zIndex:1050,display:"flex",alignItems:"flex-end",justifyContent:"center",backdropFilter:"blur(3px)"}}
-      onClick={e=>{ if(e.target===e.currentTarget) onClose(); }}>
-      <div style={{background:T.bg,borderRadius:"24px 24px 0 0",width:"100%",maxWidth:420,maxHeight:"93vh",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+    <div style={{position:"fixed",inset:0,zIndex:1050,background:T.bg,display:"flex",flexDirection:"column",overflow:"hidden"}}>
 
         {/* 頂部 bar */}
-        <div style={{background:T.card,borderBottom:`1px solid ${T.border}`,padding:"16px 18px 14px",flexShrink:0}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <div style={{background:T.card,borderBottom:`1px solid ${T.border}`,padding:"18px 18px 14px",flexShrink:0,paddingTop:"max(18px, env(safe-area-inset-top))"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:compareView!==null?8:0}}>
             <div style={{display:"flex",alignItems:"center",gap:10}}>
               {compareView!==null && (
                 <button onClick={()=>{ setCompareView(null); setShowPriceForm(false); }}
-                  style={{padding:"5px 10px",border:`1px solid ${T.border}`,borderRadius:8,background:"none",color:T.muted,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>
+                  style={{padding:"7px 12px",border:`1.5px solid ${T.border}`,borderRadius:9,background:"none",color:T.muted,fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
                   ← 返回
                 </button>
               )}
               <div>
-                <div style={{fontSize:16,fontWeight:700,color:T.ink}}>
+                <div style={{fontSize:18,fontWeight:700,color:T.ink,letterSpacing:-0.3}}>
                   {compareView===null ? "🏷️ 比價" : `🏷️ ${compareItems.find(i=>i.id===compareView)?.name||""}`}
                 </div>
-                {compareView===null&&<div style={{fontSize:11,color:T.muted,marginTop:1}}>點品項查看比價排行</div>}
+                {compareView===null&&<div style={{fontSize:12,color:T.muted,marginTop:1}}>點品項查看比價排行</div>}
               </div>
             </div>
             <button onClick={onClose}
-              style={{width:30,height:30,borderRadius:8,background:T.bg,border:"none",color:T.muted,fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+              style={{padding:"7px 14px",borderRadius:9,background:T.accentLight,border:`1.5px solid ${T.accent}44`,color:T.accent,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              返回主畫面
+            </button>
           </div>
         </div>
 
@@ -716,7 +716,6 @@ function CompareModal({
             })()
           )}
         </div>
-      </div>
     </div>
   );
 }
@@ -2012,6 +2011,7 @@ export default function App() {
           initialForm={formState.mode==="edit" ? formState.record : {date:today()}}
           categories={categories}
           calcIcon={calcIcon}
+          creditCards={creditCards}
           onSubmit={formState.mode==="edit" ? handleEdit : handleAdd}
           onClose={()=>setFormState(null)}
         />
