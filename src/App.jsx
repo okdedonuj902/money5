@@ -808,6 +808,7 @@ export default function App() {
   const [showCreditForm,  setShowCreditForm]  = useState(false);
   const [showSavingsForm, setShowSavingsForm] = useState(false);
   const [creditForm,  setCreditForm]  = useState({dueDate:"",card:"",amount:"",note:""});
+  const [editCreditId, setEditCreditId] = useState(null); // 編輯中的帳單 id
   const [savingsForm, setSavingsForm] = useState({date:today(),bank:"",balance:""});
   const [creditFilterMonth, setCreditFilterMonth] = useState(today().slice(0,7));
 
@@ -835,7 +836,15 @@ export default function App() {
 
   async function addCreditBill() {
     if(!creditForm.dueDate||!creditForm.card||!creditForm.amount||isNaN(creditForm.amount)||+creditForm.amount<=0) return;
-    await addDoc(collection(db,"creditBills"),{...creditForm,amount:+creditForm.amount,month:creditForm.dueDate.slice(0,7)});
+    if(editCreditId) {
+      // 編輯模式：更新現有記錄
+      await setDoc(doc(db,"creditBills",editCreditId),{
+        ...creditForm, amount:+creditForm.amount, month:creditForm.dueDate.slice(0,7)
+      });
+      setEditCreditId(null);
+    } else {
+      await addDoc(collection(db,"creditBills"),{...creditForm,amount:+creditForm.amount,month:creditForm.dueDate.slice(0,7)});
+    }
     setCreditForm({dueDate:"",card:"",amount:"",note:""});
     setShowCreditForm(false);
   }
@@ -1540,7 +1549,7 @@ export default function App() {
                   ))}
                   {creditBills.length===0&&<option value={creditFilterMonth}>{creditFilterMonth.replace("-","年")}月</option>}
                 </select>
-                <button onClick={()=>setShowCreditForm(v=>!v)}
+                <button onClick={()=>{ setShowCreditForm(v=>!v); setEditCreditId(null); setCreditForm({dueDate:"",card:"",amount:"",note:""}); }}
                   style={{flexShrink:0,padding:"9px 16px",background:showCreditForm?T.accent:"none",color:showCreditForm?"#fff":T.accent,border:`1.5px solid ${T.accent}`,borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                   {showCreditForm?"✕ 取消":"＋ 新增"}
                 </button>
@@ -1549,7 +1558,7 @@ export default function App() {
               {/* 新增信用卡帳單表單 */}
               {showCreditForm && (
                 <div style={{...cardSt,marginBottom:14,background:T.accentLight}}>
-                  <div style={{fontSize:13,fontWeight:700,color:T.ink,marginBottom:12}}>新增信用卡帳單</div>
+                  <div style={{fontSize:13,fontWeight:700,color:T.ink,marginBottom:12}}>{editCreditId?"✏️ 編輯帳單":"新增信用卡帳單"}</div>
                   <div style={{marginBottom:10}}>
                     <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:4}}>繳費截止日 *</div>
                     <input type="date" value={creditForm.dueDate} onChange={e=>setCreditForm(f=>({...f,dueDate:e.target.value}))}
@@ -1575,7 +1584,7 @@ export default function App() {
                   </div>
                   <button onClick={addCreditBill}
                     style={{width:"100%",padding:"11px 0",background:T.accent,color:"#fff",border:"none",borderRadius:11,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                    儲存帳單
+                    {editCreditId?"✓ 儲存修改":"儲存帳單"}
                   </button>
                 </div>
               )}
@@ -1601,25 +1610,38 @@ export default function App() {
                       <div style={{fontSize:32}}>💳</div>
                     </div>
 
-                    {/* 表格 */}
-                    <div style={{background:T.card,borderRadius:16,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,0.04)"}}>
-                      {/* 表頭 */}
-                      <div style={{display:"grid",gridTemplateColumns:"90px 1fr 90px 32px",gap:0,background:T.accentLight,padding:"9px 12px"}}>
-                        {["截止日","信用卡","金額",""].map((h,i)=>(
-                          <div key={i} style={{fontSize:11,fontWeight:700,color:T.accent,textAlign:i===2?"right":"left"}}>{h}</div>
-                        ))}
-                      </div>
-                      {/* 資料列 */}
-                      {bills.map((b,i)=>(
-                        <div key={b.id} style={{display:"grid",gridTemplateColumns:"90px 1fr 90px 32px",gap:0,padding:"11px 12px",borderBottom:i<bills.length-1?`1px solid ${T.border}`:"none",alignItems:"center"}}>
-                          <div style={{fontSize:12,color:T.muted}}>{b.dueDate}</div>
-                          <div>
-                            <div style={{fontSize:13,fontWeight:600,color:T.ink}}>{b.card}</div>
-                            {b.note&&<div style={{fontSize:11,color:T.muted,marginTop:1}}>{b.note}</div>}
+                    {/* 帳單卡片列表 */}
+                    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                      {bills.map((b)=>(
+                        <div key={b.id} style={{background:T.card,borderRadius:14,padding:"13px 14px",boxShadow:"0 1px 4px rgba(0,0,0,0.04)",border:`1px solid ${T.border}`}}>
+                          <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:4}}>
+                                <span style={{fontSize:14,fontWeight:700,color:T.ink}}>{b.card}</span>
+                                <span style={{fontSize:11,background:T.warmLight,color:T.warm,borderRadius:6,padding:"2px 7px",fontWeight:600,flexShrink:0}}>{b.dueDate} 截止</span>
+                              </div>
+                              {b.note&&<div style={{fontSize:12,color:T.muted}}>{b.note}</div>}
+                            </div>
+                            <div style={{textAlign:"right",flexShrink:0}}>
+                              <div style={{fontSize:18,fontWeight:800,color:T.warm}}>{fmt(b.amount)}</div>
+                            </div>
                           </div>
-                          <div style={{fontSize:14,fontWeight:700,color:T.warm,textAlign:"right"}}>{fmt(b.amount)}</div>
-                          <button onClick={()=>deleteDoc(doc(db,"creditBills",b.id))}
-                            style={{fontSize:14,color:T.border,background:"none",border:"none",cursor:"pointer",padding:0,textAlign:"center"}}>×</button>
+                          {/* 編輯 / 刪除按鈕 */}
+                          <div style={{display:"flex",gap:7,marginTop:10,paddingTop:9,borderTop:`1px solid ${T.border}`}}>
+                            <button onClick={()=>{
+                              setCreditForm({dueDate:b.dueDate,card:b.card,amount:String(b.amount),note:b.note||""});
+                              setEditCreditId(b.id);
+                              setShowCreditForm(true);
+                              window.scrollTo({top:0,behavior:"smooth"});
+                            }}
+                              style={{flex:1,padding:"7px 0",background:T.accentLight,color:T.accent,border:`1px solid ${T.accent}44`,borderRadius:9,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                              ✏️ 編輯
+                            </button>
+                            <button onClick={()=>deleteDoc(doc(db,"creditBills",b.id))}
+                              style={{flex:1,padding:"7px 0",background:"none",color:T.muted,border:`1px solid ${T.border}`,borderRadius:9,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                              刪除
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
