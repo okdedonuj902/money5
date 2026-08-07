@@ -63,7 +63,13 @@ const T = {
 };
 
 function today()    { return new Date().toISOString().slice(0, 10); }
-function fmt(n)     { return "NT$ " + Number(n).toLocaleString(); }
+// 安全金額轉換：避免浮點數精度誤差，金額統一用整數分儲存再換算
+function toMoney(val) {
+  // 先轉字串去除空白，再用 Math.round 避免 0.9999... 問題
+  const n = Math.round(parseFloat(String(val).trim()) * 100) / 100;
+  return isNaN(n) ? 0 : n;
+}
+function fmt(n)     { return "NT$ " + Math.round(Number(n)).toLocaleString(); }
 function uid()      { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 function findMain(cats, id)           { return cats.find(c => c.id === id); }
 function findSub(cats, mId, sId)      { return findMain(cats, mId)?.sub?.find(s => s.id === sId); }
@@ -166,9 +172,9 @@ function RecordForm({ isEdit, initialForm, categories, calcIcon, creditCards, on
   async function handleSubmit() {
     if(!form.item.trim()) return setFormError("請輸入品項名稱");
     if(!form.catMain)     return setFormError("請選擇分類");
-    if(!form.amount||isNaN(form.amount)||+form.amount<=0) return setFormError("請輸入有效金額");
+    if(!form.amount||isNaN(form.amount)||toMoney(form.amount)<=0) return setFormError("請輸入有效金額");
     if(form.payment==="card"&&!form.creditCard) return setFormError("請選擇使用的信用卡");
-    await onSubmit({...form, amount:+form.amount});
+    await onSubmit({...form, amount:toMoney(form.amount)});
   }
 
   return (
@@ -846,30 +852,30 @@ export default function App() {
   useEffect(()=>{ const u=onSnapshot(collection(db,"incomeRecs"),snap=>{ setIncomeRecs(snap.docs.map(d=>({id:d.id,...d.data()}))); }); return u; },[]);
 
   async function addIncomeRec() {
-    if(!incomeForm.date||!incomeForm.person||!incomeForm.category||!incomeForm.amount||isNaN(incomeForm.amount)||+incomeForm.amount<=0) return;
-    await addDoc(collection(db,"incomeRecs"),{...incomeForm,amount:+incomeForm.amount,month:incomeForm.date.slice(0,7)});
+    if(!incomeForm.date||!incomeForm.person||!incomeForm.category||!incomeForm.amount||isNaN(incomeForm.amount)||toMoney(incomeForm.amount)<=0) return;
+    await addDoc(collection(db,"incomeRecs"),{...incomeForm,amount:toMoney(incomeForm.amount),month:incomeForm.date.slice(0,7)});
     setIncomeForm({date:today(),person:"吳書宇",category:"薪資收入",amount:"",note:""});
     setShowIncomeForm(false);
   }
 
   async function addCreditBill() {
-    if(!creditForm.dueDate||!creditForm.card||!creditForm.amount||isNaN(creditForm.amount)||+creditForm.amount<=0) return;
+    if(!creditForm.dueDate||!creditForm.card||!creditForm.amount||isNaN(creditForm.amount)||toMoney(creditForm.amount)<=0) return;
     if(editCreditId) {
       // 編輯模式：更新現有記錄
       await setDoc(doc(db,"creditBills",editCreditId),{
-        ...creditForm, amount:+creditForm.amount, month:creditForm.dueDate.slice(0,7)
+        ...creditForm, amount:toMoney(creditForm.amount), month:creditForm.dueDate.slice(0,7)
       });
       setEditCreditId(null);
     } else {
-      await addDoc(collection(db,"creditBills"),{...creditForm,amount:+creditForm.amount,month:creditForm.dueDate.slice(0,7)});
+      await addDoc(collection(db,"creditBills"),{...creditForm,amount:toMoney(creditForm.amount),month:creditForm.dueDate.slice(0,7)});
     }
     setCreditForm({dueDate:"",card:"",amount:"",note:""});
     setShowCreditForm(false);
   }
   async function addSavingsRec() {
-    if(!savingsForm.date||!savingsForm.bank||!savingsForm.balance||isNaN(savingsForm.balance)||+savingsForm.balance<0) return;
+    if(!savingsForm.date||!savingsForm.bank||!savingsForm.balance||isNaN(savingsForm.balance)||toMoney(savingsForm.balance)<0) return;
     // 同一個銀行只保留最新一筆（用 setDoc 覆蓋）
-    await setDoc(doc(db,"savingsRecs",savingsForm.bank),{...savingsForm,balance:+savingsForm.balance,updatedAt:today()});
+    await setDoc(doc(db,"savingsRecs",savingsForm.bank),{...savingsForm,balance:toMoney(savingsForm.balance),updatedAt:today()});
     setSavingsForm({date:today(),bank:"",balance:""});
     setShowSavingsForm(false);
   }
@@ -963,7 +969,7 @@ export default function App() {
         catSub:  item.catSub||"",
         payment: item.payment,
         creditCard: item.creditCard||"",
-        amount:  +item.amount,
+        amount:  toMoney(item.amount),
         recurringId: item.id,
       });
     });
@@ -1032,8 +1038,8 @@ export default function App() {
   ];
 
   async function addRecurringItem() {
-    if(!recurForm.day||!recurForm.item||!recurForm.catMain||!recurForm.amount||isNaN(recurForm.amount)||+recurForm.amount<=0) return;
-    await addDoc(collection(db,"recurringItems"),{...recurForm,amount:+recurForm.amount});
+    if(!recurForm.day||!recurForm.item||!recurForm.catMain||!recurForm.amount||isNaN(recurForm.amount)||toMoney(recurForm.amount)<=0) return;
+    await addDoc(collection(db,"recurringItems"),{...recurForm,amount:toMoney(recurForm.amount)});
     setRecurForm({day:"1",item:"",catMain:"",catSub:"",payment:"cash",creditCard:"",amount:"",note:""});
     setShowRecurForm(false);
   }
@@ -1077,10 +1083,10 @@ export default function App() {
 
   async function addComparePrice(itemId){
     if(!priceForm.store.trim()||!priceForm.price||isNaN(priceForm.price)||+priceForm.price<=0) return;
-    const specQty = parseFloat(priceForm.specQty);
-    const price   = +priceForm.price;
-    // 單位成本 = 價格 ÷ 規格數量（若無規格則 unitCost = price）
-    const unitCost = (!isNaN(specQty)&&specQty>0) ? parseFloat((price/specQty).toFixed(4)) : price;
+    const specQty = toMoney(priceForm.specQty);
+    const price   = toMoney(priceForm.price);
+    // 單位成本 = 價格 ÷ 規格數量（若無規格則 unitCost = price），用 Math.round 避免浮點誤差
+    const unitCost = (specQty>0) ? Math.round((price/specQty)*10000)/10000 : price;
     await addDoc(collection(db,"comparePrices"),{
       itemId, store:priceForm.store.trim(), price, specQty:specQty||null,
       note:priceForm.note.trim(), unitCost, createdAt:Date.now()
@@ -1798,7 +1804,7 @@ export default function App() {
                   ))}
                   <button onClick={async()=>{
                     const clean={};
-                    Object.entries(budgetDraft).forEach(([k,v])=>{ if(v&&+v>0) clean[k]=+v; });
+                    Object.entries(budgetDraft).forEach(([k,v])=>{ if(v&&toMoney(v)>0) clean[k]=toMoney(v); });
                     await saveBudgets(clean, totalBudgetDraft);
                     setShowBudgetForm(false);
                   }} style={{width:"100%",padding:"11px 0",background:T.accent,color:"#fff",border:"none",borderRadius:11,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit",marginTop:4}}>
