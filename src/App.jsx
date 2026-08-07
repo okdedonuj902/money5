@@ -723,56 +723,74 @@ function CompareModal({
 // ══════════════════════════════════════════════════════
 // 信用卡管理元件
 // ══════════════════════════════════════════════════════
-function CreditCardManager({ creditCards, onSave, accentLight, accent, warm, warmLight, border, ink, muted, bg, card }) {
+function CreditCardManager({ creditCards, onSave, accentLight, accent, border, ink, muted }) {
   const [show,     setShow]     = useState(false);
   const [newCard,  setNewCard]  = useState("");
-  const [list,     setList]     = useState(creditCards);
+  const [saving,   setSaving]   = useState(false);
+  const [saved,    setSaved]    = useState(false);
 
-  useEffect(()=>{ setList(creditCards); }, [creditCards]);
+  // 即時新增：直接寫入 Firebase
+  async function handleAdd() {
+    const name = newCard.trim();
+    if(!name) return;
+    if(creditCards.includes(name)) return; // 避免重複
+    const newList = [...creditCards, name];
+    setSaving(true);
+    await onSave(newList);
+    setSaving(false);
+    setSaved(true);
+    setTimeout(()=>setSaved(false), 1800);
+    setNewCard("");
+  }
 
-  async function handleSave() {
-    await onSave(list);
-    setShow(false);
+  // 即時刪除：直接寫入 Firebase
+  async function handleDelete(idx) {
+    const newList = creditCards.filter((_,i)=>i!==idx);
+    await onSave(newList);
   }
 
   return (
     <div style={{marginBottom:14}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:show?10:0}}>
         <div style={{fontSize:11,color:muted,fontWeight:600}}>共 {creditCards.length} 張信用卡</div>
-        <button onClick={()=>setShow(v=>!v)}
+        <button onClick={()=>{ setShow(v=>!v); setNewCard(""); }}
           style={{padding:"6px 14px",background:show?accent:"none",color:show?"#fff":accent,border:`1.5px solid ${accent}`,borderRadius:9,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-          {show?"✕ 取消":"⚙️ 管理信用卡"}
+          {show?"✕ 關閉":"⚙️ 管理信用卡"}
         </button>
       </div>
 
       {show && (
         <div style={{background:accentLight,borderRadius:14,padding:"14px",boxShadow:"0 1px 4px rgba(0,0,0,0.04)"}}>
-          <div style={{fontSize:12,fontWeight:700,color:ink,marginBottom:10}}>信用卡清單</div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+            <div style={{fontSize:12,fontWeight:700,color:ink}}>信用卡清單</div>
+            {saved&&<div style={{fontSize:11,color:"#6ab187",fontWeight:700}}>✓ 已同步</div>}
+          </div>
           <div style={{marginBottom:12}}>
-            {list.map((c,i)=>(
-              <div key={c} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 10px",background:"#fff",borderRadius:9,marginBottom:6,border:`1px solid ${border}`}}>
+            {creditCards.map((c,i)=>(
+              <div key={c+i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"9px 11px",background:"#fff",borderRadius:9,marginBottom:6,border:`1px solid ${border}`}}>
                 <span style={{fontSize:13,color:ink,fontWeight:500}}>💳 {c}</span>
-                <button onClick={()=>setList(l=>l.filter((_,j)=>j!==i))}
-                  style={{fontSize:12,color:muted,background:"none",border:`1px solid ${border}`,borderRadius:6,padding:"2px 8px",cursor:"pointer",fontFamily:"inherit"}}>
+                <button onClick={()=>handleDelete(i)}
+                  style={{fontSize:11,color:muted,background:"none",border:`1px solid ${border}`,borderRadius:6,padding:"3px 9px",cursor:"pointer",fontFamily:"inherit"}}>
                   刪除
                 </button>
               </div>
             ))}
+            {creditCards.length===0&&(
+              <div style={{fontSize:12,color:muted,textAlign:"center",padding:"10px 0"}}>尚未有信用卡</div>
+            )}
           </div>
-          {/* 新增 */}
-          <div style={{display:"flex",gap:8,marginBottom:12}}>
+          {/* 新增輸入列 */}
+          <div style={{display:"flex",gap:8}}>
             <input value={newCard} onChange={e=>setNewCard(e.target.value)}
-              onKeyDown={e=>{ if(e.key==="Enter"&&newCard.trim()){ setList(l=>[...l,newCard.trim()]); setNewCard(""); } }}
-              placeholder="新增信用卡名稱" style={{flex:1,padding:"8px 10px",borderRadius:9,border:`1.5px solid ${border}`,fontSize:13,color:ink,background:"#fff",outline:"none",fontFamily:"inherit"}}/>
-            <button onClick={()=>{ if(newCard.trim()){ setList(l=>[...l,newCard.trim()]); setNewCard(""); } }}
-              style={{padding:"8px 14px",background:accent,color:"#fff",border:"none",borderRadius:9,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
-              新增
+              onKeyDown={e=>{ if(e.key==="Enter") handleAdd(); }}
+              placeholder="輸入新信用卡名稱"
+              style={{flex:1,padding:"9px 11px",borderRadius:9,border:`1.5px solid ${border}`,fontSize:13,color:ink,background:"#fff",outline:"none",fontFamily:"inherit"}}/>
+            <button onClick={handleAdd} disabled={saving}
+              style={{padding:"9px 16px",background:saving?"#aaa":accent,color:"#fff",border:"none",borderRadius:9,fontSize:13,fontWeight:700,cursor:saving?"not-allowed":"pointer",fontFamily:"inherit",flexShrink:0}}>
+              {saving?"…":"＋ 新增"}
             </button>
           </div>
-          <button onClick={handleSave}
-            style={{width:"100%",padding:"10px 0",background:accent,color:"#fff",border:"none",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-            儲存信用卡清單
-          </button>
+          <div style={{fontSize:11,color:muted,marginTop:8}}>💡 新增或刪除後立即同步到所有裝置</div>
         </div>
       )}
     </div>
