@@ -833,7 +833,13 @@ export default function App() {
   const [showSavingsForm, setShowSavingsForm] = useState(false);
   const [creditForm,  setCreditForm]  = useState({dueDate:"",card:"",amount:"",note:""});
   const [editCreditId, setEditCreditId] = useState(null); // 編輯中的帳單 id
-  const [savingsForm, setSavingsForm] = useState({date:today(),bank:"",balance:""});
+  const [savingsForm, setSavingsForm] = useState({date:today(),bank:"",balance:"",currency:"TWD"});
+  const [editSavingsId, setEditSavingsId] = useState(null); // 編輯中的存款 id
+  const [savingsTab,   setSavingsTab]   = useState("TWD"); // "TWD" | "USD"
+  const [usdRate,      setUsdRate]      = useState(null);  // USD→TWD 匯率
+  const [usdRateTime,  setUsdRateTime]  = useState("");    // 匯率更新時間
+  const [usdRateLoading, setUsdRateLoading] = useState(false);
+  const [customBankName, setCustomBankName] = useState(""); // 自訂帳戶名稱
   const [creditFilterMonth, setCreditFilterMonth] = useState(today().slice(0,7));
 
   useEffect(()=>{ const u=onSnapshot(collection(db,"creditBills"),snap=>{ setCreditBills(snap.docs.map(d=>({id:d.id,...d.data()}))); }); return u; },[]);
@@ -874,9 +880,15 @@ export default function App() {
   }
   async function addSavingsRec() {
     if(!savingsForm.date||!savingsForm.bank||!savingsForm.balance||isNaN(savingsForm.balance)||toMoney(savingsForm.balance)<0) return;
-    // 同一個銀行只保留最新一筆（用 setDoc 覆蓋）
-    await setDoc(doc(db,"savingsRecs",savingsForm.bank),{...savingsForm,balance:toMoney(savingsForm.balance),updatedAt:today()});
-    setSavingsForm({date:today(),bank:"",balance:""});
+    const currency = savingsForm.currency||"TWD";
+    const docId    = `${currency}_${savingsForm.bank}`; // 同貨幣同銀行只保留一筆
+    if(editSavingsId && editSavingsId !== docId) {
+      // 若銀行或貨幣改變，先刪舊的
+      await deleteDoc(doc(db,"savingsRecs",editSavingsId));
+    }
+    await setDoc(doc(db,"savingsRecs",docId),{...savingsForm,currency,balance:toMoney(savingsForm.balance),updatedAt:today()});
+    setSavingsForm({date:today(),bank:"",balance:"",currency:"TWD"});
+    setEditSavingsId(null);
     setShowSavingsForm(false);
   }
 
@@ -1093,6 +1105,23 @@ export default function App() {
     });
     setPriceForm({store:"",price:"",specQty:"",note:""});
     setShowPriceForm(false);
+  }
+
+  async function fetchUsdRate() {
+    setUsdRateLoading(true);
+    try {
+      const res  = await fetch("https://open.er-api.com/v6/latest/USD");
+      const data = await res.json();
+      if(data?.rates?.TWD) {
+        const rate = Math.round(data.rates.TWD * 100) / 100;
+        setUsdRate(rate);
+        const now = new Date();
+        setUsdRateTime(`${now.getMonth()+1}/${now.getDate()} ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`);
+      }
+    } catch(e) {
+      console.error("匯率取得失敗", e);
+    }
+    setUsdRateLoading(false);
   }
 
   async function saveCategories(cats) { await setDoc(doc(db,"settings","categories"),{list:cats}); setCategories(cats); }
@@ -1634,38 +1663,31 @@ export default function App() {
                       <div style={{fontSize:32}}>💳</div>
                     </div>
 
-                    {/* 帳單卡片列表 */}
-                    <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                      {bills.map((b)=>(
-                        <div key={b.id} style={{background:T.card,borderRadius:14,padding:"13px 14px",boxShadow:"0 1px 4px rgba(0,0,0,0.04)",border:`1px solid ${T.border}`}}>
-                          <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
-                            <div style={{flex:1,minWidth:0}}>
-                              <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:4}}>
-                                <span style={{fontSize:14,fontWeight:700,color:T.ink}}>{b.card}</span>
-                                <span style={{fontSize:11,background:T.warmLight,color:T.warm,borderRadius:6,padding:"2px 7px",fontWeight:600,flexShrink:0}}>{b.dueDate} 截止</span>
-                              </div>
-                              {b.note&&<div style={{fontSize:12,color:T.muted}}>{b.note}</div>}
+                    {/* 帳單列表（緊湊版）*/}
+                    <div style={{background:T.card,borderRadius:14,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,0.04)"}}>
+                      {bills.map((b,i)=>(
+                        <div key={b.id} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 12px",borderBottom:i<bills.length-1?`1px solid ${T.border}`:"none"}}>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                              <span style={{fontSize:13,fontWeight:700,color:T.ink}}>{b.card}</span>
+                              <span style={{fontSize:10,background:T.warmLight,color:T.warm,borderRadius:5,padding:"1px 6px",fontWeight:600,flexShrink:0}}>{b.dueDate}</span>
                             </div>
-                            <div style={{textAlign:"right",flexShrink:0}}>
-                              <div style={{fontSize:18,fontWeight:800,color:T.warm}}>{fmt(b.amount)}</div>
-                            </div>
+                            {b.note&&<div style={{fontSize:11,color:T.muted,marginTop:1}}>{b.note}</div>}
                           </div>
-                          {/* 編輯 / 刪除按鈕 */}
-                          <div style={{display:"flex",gap:7,marginTop:10,paddingTop:9,borderTop:`1px solid ${T.border}`}}>
-                            <button onClick={()=>{
-                              setCreditForm({dueDate:b.dueDate,card:b.card,amount:String(b.amount),note:b.note||""});
-                              setEditCreditId(b.id);
-                              setShowCreditForm(true);
-                              window.scrollTo({top:0,behavior:"smooth"});
-                            }}
-                              style={{flex:1,padding:"7px 0",background:T.accentLight,color:T.accent,border:`1px solid ${T.accent}44`,borderRadius:9,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                              ✏️ 編輯
-                            </button>
-                            <button onClick={()=>deleteDoc(doc(db,"creditBills",b.id))}
-                              style={{flex:1,padding:"7px 0",background:"none",color:T.muted,border:`1px solid ${T.border}`,borderRadius:9,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
-                              刪除
-                            </button>
-                          </div>
+                          <div style={{fontSize:15,fontWeight:800,color:T.warm,flexShrink:0}}>{fmt(b.amount)}</div>
+                          {/* 編輯小按鈕 */}
+                          <button onClick={()=>{
+                            setCreditForm({dueDate:b.dueDate,card:b.card,amount:String(b.amount),note:b.note||""});
+                            setEditCreditId(b.id);
+                            setShowCreditForm(true);
+                          }} style={{padding:"4px 8px",background:T.accentLight,color:T.accent,border:`1px solid ${T.accent}44`,borderRadius:7,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
+                            ✏️
+                          </button>
+                          {/* 刪除小叉叉 */}
+                          <button onClick={()=>deleteDoc(doc(db,"creditBills",b.id))}
+                            style={{width:24,height:24,background:"none",color:T.muted,border:`1px solid ${T.border}`,borderRadius:6,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>
+                            ✕
+                          </button>
                         </div>
                       ))}
                     </div>
@@ -1676,92 +1698,186 @@ export default function App() {
           )}
 
           {/* 存款 */}
-          {tab==="savings" && (
+          {tab==="savings" && (()=>{
+            const USD_BANKS_PRESET = ["晴儀將來","晴儀台新"]; // 其他 = 自行輸入
+            const twdRecs = savingsRecs.filter(r=>(r.currency||"TWD")==="TWD").sort((a,b)=>a.bank.localeCompare(b.bank));
+            const usdRecs = savingsRecs.filter(r=>r.currency==="USD").sort((a,b)=>a.bank.localeCompare(b.bank));
+            const twdTotal = twdRecs.reduce((s,r)=>s+r.balance,0);
+            const usdTotal = usdRecs.reduce((s,r)=>s+r.balance,0);
+            const currentRecs = savingsTab==="TWD" ? twdRecs : usdRecs;
+            const currentTotal = savingsTab==="TWD" ? twdTotal : usdTotal;
+            const currencySymbol = savingsTab==="TWD" ? "NT$" : "US$";
+            const currentBanks = savingsTab==="TWD" ? SAVINGS_BANKS : USD_BANKS_PRESET;
+            return (
             <>
-              <div style={{display:"flex",justifyContent:"flex-end",marginBottom:14}}>
-                <button onClick={()=>setShowSavingsForm(v=>!v)}
-                  style={{padding:"9px 16px",background:showSavingsForm?T.accent:"none",color:showSavingsForm?"#fff":T.accent,border:`1.5px solid ${T.accent}`,borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                  {showSavingsForm?"✕ 取消":"＋ 更新餘額"}
+              {/* 幣別切換 + 新增按鈕 */}
+              <div style={{display:"flex",gap:8,marginBottom:14,alignItems:"center"}}>
+                <div style={{display:"flex",flex:1,gap:0,borderRadius:10,overflow:"hidden",border:`1.5px solid ${T.border}`}}>
+                  {[["TWD","🇹🇼 台幣"],["USD","🇺🇸 美金"]].map(([v,l])=>(
+                    <button key={v} onClick={()=>{ setSavingsTab(v); setShowSavingsForm(false); if(v==="USD"&&!usdRate) fetchUsdRate(); }}
+                      style={{flex:1,padding:"8px 0",border:"none",background:savingsTab===v?T.accent:"#fff",color:savingsTab===v?"#fff":T.muted,fontSize:12,fontWeight:savingsTab===v?700:500,cursor:"pointer",fontFamily:"inherit"}}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+                <button onClick={()=>{ setShowSavingsForm(v=>!v); setEditSavingsId(null); setSavingsForm({date:today(),bank:"",balance:"",currency:savingsTab}); }}
+                  style={{flexShrink:0,padding:"9px 14px",background:showSavingsForm?T.accent:"none",color:showSavingsForm?"#fff":T.accent,border:`1.5px solid ${T.accent}`,borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                  {showSavingsForm?"✕":"＋ 更新"}
                 </button>
               </div>
 
               {/* 新增/更新存款表單 */}
               {showSavingsForm && (
                 <div style={{...cardSt,marginBottom:14,background:T.accentLight}}>
-                  <div style={{fontSize:13,fontWeight:700,color:T.ink,marginBottom:12}}>更新帳戶餘額</div>
-                  <div style={{fontSize:11,color:T.muted,marginBottom:12,background:"#fff",borderRadius:9,padding:"8px 11px"}}>
-                    💡 同一個銀行只保留最新一筆，更新後會自動覆蓋
+                  <div style={{fontSize:13,fontWeight:700,color:T.ink,marginBottom:10}}>
+                    {editSavingsId?"✏️ 編輯餘額":"新增帳戶餘額"} — {savingsTab==="TWD"?"🇹🇼 台幣":"🇺🇸 美金"}
                   </div>
-                  <div style={{marginBottom:10}}>
+                  <div style={{fontSize:11,color:T.muted,marginBottom:10,background:"#fff",borderRadius:9,padding:"7px 10px"}}>
+                    💡 同一個銀行只保留最新一筆
+                  </div>
+                  <div style={{marginBottom:9}}>
                     <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:4}}>填寫日期 *</div>
                     <input type="date" value={savingsForm.date} onChange={e=>setSavingsForm(f=>({...f,date:e.target.value}))}
                       style={{width:"100%",padding:"9px 12px",borderRadius:10,border:`1.5px solid ${T.border}`,fontSize:13,color:T.ink,background:"#fff",outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
                   </div>
-                  <div style={{marginBottom:10}}>
-                    <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:4}}>銀行別 *</div>
-                    <select value={savingsForm.bank} onChange={e=>setSavingsForm(f=>({...f,bank:e.target.value}))}
-                      style={{width:"100%",padding:"9px 12px",borderRadius:10,border:`1.5px solid ${T.border}`,fontSize:13,color:savingsForm.bank?T.ink:T.muted,background:"#fff",outline:"none",fontFamily:"inherit"}}>
-                      <option value="">請選擇銀行</option>
-                      {SAVINGS_BANKS.map(b=><option key={b} value={b}>{b}</option>)}
-                    </select>
+                  <div style={{marginBottom:9}}>
+                    <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:4}}>{savingsTab==="TWD"?"銀行別":"帳戶名稱"} *</div>
+                    {savingsTab==="TWD" ? (
+                      <select value={savingsForm.bank} onChange={e=>setSavingsForm(f=>({...f,bank:e.target.value}))}
+                        style={{width:"100%",padding:"9px 12px",borderRadius:10,border:`1.5px solid ${T.border}`,fontSize:13,color:savingsForm.bank?T.ink:T.muted,background:"#fff",outline:"none",fontFamily:"inherit"}}>
+                        <option value="">請選擇銀行</option>
+                        {SAVINGS_BANKS.map(b=><option key={b} value={b}>{b}</option>)}
+                      </select>
+                    ) : (
+                      <>
+                        {/* 快速選擇：晴儀將來 / 晴儀台新 / 其他 */}
+                        <div style={{display:"flex",flexWrap:"wrap",gap:7,marginBottom:8}}>
+                          {[...USD_BANKS_PRESET,"其他"].map(b=>{
+                            const isPreset = USD_BANKS_PRESET.includes(b);
+                            const isActive = isPreset
+                              ? savingsForm.bank===b
+                              : !USD_BANKS_PRESET.includes(savingsForm.bank);
+                            return (
+                              <button key={b} onClick={()=>setSavingsForm(f=>({...f,bank:isPreset?b:""}))}
+                                style={{padding:"7px 14px",borderRadius:9,border:`1.5px solid ${isActive?T.accent:T.border}`,background:isActive?T.accentLight:"#fff",color:isActive?T.accent:T.muted,fontSize:13,fontWeight:isActive?700:500,cursor:"pointer",fontFamily:"inherit"}}>
+                                {b}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {/* 「其他」選中時顯示自訂輸入框 */}
+                        {!USD_BANKS_PRESET.includes(savingsForm.bank) && (
+                          <input value={savingsForm.bank} onChange={e=>setSavingsForm(f=>({...f,bank:e.target.value}))}
+                            placeholder="請輸入帳戶名稱"
+                            style={{width:"100%",padding:"9px 12px",borderRadius:10,border:`1.5px solid ${T.border}`,fontSize:13,color:T.ink,background:"#fff",outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}
+                            autoFocus/>
+                        )}
+                      </>
+                    )}
                   </div>
-                  <div style={{marginBottom:14}}>
-                    <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:4}}>餘額（NT$）*</div>
+                  <div style={{marginBottom:12}}>
+                    <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:4}}>餘額（{currencySymbol}）*</div>
                     <input type="number" placeholder="0" value={savingsForm.balance} onChange={e=>setSavingsForm(f=>({...f,balance:e.target.value}))}
                       style={{width:"100%",padding:"9px 12px",borderRadius:10,border:`1.5px solid ${T.border}`,fontSize:16,fontWeight:700,color:T.ink,background:"#fff",outline:"none",boxSizing:"border-box",fontFamily:"inherit",textAlign:"right"}}/>
                   </div>
                   <button onClick={addSavingsRec}
                     style={{width:"100%",padding:"11px 0",background:T.accent,color:"#fff",border:"none",borderRadius:11,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                    儲存餘額
+                    {editSavingsId?"✓ 儲存修改":"儲存餘額"}
                   </button>
                 </div>
               )}
 
-              {/* 存款列表 */}
-              {(()=>{
-                const total = savingsRecs.reduce((s,r)=>s+r.balance,0);
-                if(savingsRecs.length===0) return (
-                  <div style={{textAlign:"center",color:T.muted,padding:"40px 0",fontSize:14}}>
-                    <div style={{fontSize:28,marginBottom:8}}>🏦</div>尚未輸入任何帳戶餘額
-                  </div>
-                );
-                const sorted = [...savingsRecs].sort((a,b)=>a.bank.localeCompare(b.bank));
-                return (
-                  <>
-                    {/* 總計卡片 */}
-                    <div style={{...cardSt,background:"#EDF6EF",marginBottom:14,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                      <div>
-                        <div style={{fontSize:11,color:T.accent,fontWeight:700,letterSpacing:0.8,marginBottom:3}}>活期存款合計</div>
-                        <div style={{fontSize:22,fontWeight:700,color:T.accent}}>{fmt(total)}</div>
-                        <div style={{fontSize:11,color:T.accent,marginTop:2}}>{savingsRecs.length} 個帳戶</div>
+              {/* 總計卡片 */}
+              {currentRecs.length>0 && (
+                <div style={{...cardSt,background:"#EDF6EF",marginBottom:12}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:savingsTab==="USD"?8:0}}>
+                    <div>
+                      <div style={{fontSize:11,color:T.accent,fontWeight:700,letterSpacing:0.8,marginBottom:3}}>
+                        {savingsTab==="TWD"?"台幣存款合計":"美金存款合計"}
                       </div>
-                      <div style={{fontSize:32}}>🏦</div>
-                    </div>
-
-                    {/* 表格 */}
-                    <div style={{background:T.card,borderRadius:16,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,0.04)"}}>
-                      {/* 表頭 */}
-                      <div style={{display:"grid",gridTemplateColumns:"1fr 100px 80px 32px",gap:0,background:T.accentLight,padding:"9px 12px"}}>
-                        {["銀行別","更新日期","餘額",""].map((h,i)=>(
-                          <div key={i} style={{fontSize:11,fontWeight:700,color:T.accent,textAlign:i===2?"right":"left"}}>{h}</div>
-                        ))}
+                      <div style={{fontSize:22,fontWeight:700,color:T.accent}}>
+                        {savingsTab==="TWD"?fmt(currentTotal):`US$ ${currentTotal.toLocaleString()}`}
                       </div>
-                      {/* 資料列 */}
-                      {sorted.map((r,i)=>(
-                        <div key={r.id} style={{display:"grid",gridTemplateColumns:"1fr 100px 80px 32px",gap:0,padding:"11px 12px",borderBottom:i<sorted.length-1?`1px solid ${T.border}`:"none",alignItems:"center"}}>
-                          <div style={{fontSize:13,fontWeight:600,color:T.ink}}>{r.bank}</div>
-                          <div style={{fontSize:11,color:T.muted}}>{r.date||r.updatedAt}</div>
-                          <div style={{fontSize:14,fontWeight:700,color:T.accent,textAlign:"right"}}>{fmt(r.balance)}</div>
-                          <button onClick={()=>deleteDoc(doc(db,"savingsRecs",r.id))}
-                            style={{fontSize:14,color:T.border,background:"none",border:"none",cursor:"pointer",padding:0,textAlign:"center"}}>×</button>
+                      {savingsTab==="USD"&&usdRate&&(
+                        <div style={{fontSize:13,color:T.accent,fontWeight:600,marginTop:3}}>
+                          ≈ {fmt(Math.round(currentTotal*usdRate))} <span style={{fontSize:11,fontWeight:400}}>台幣</span>
                         </div>
-                      ))}
+                      )}
+                      {savingsTab==="USD"&&!usdRate&&(
+                        <div style={{fontSize:11,color:T.muted,marginTop:3}}>點「🔄 更新匯率」取得換算</div>
+                      )}
+                      <div style={{fontSize:11,color:T.accent,marginTop:3}}>{currentRecs.length} 個帳戶</div>
                     </div>
-                  </>
-                );
-              })()}
+                    <div style={{fontSize:32}}>{savingsTab==="TWD"?"🏦":"💵"}</div>
+                  </div>
+                  {/* 美金匯率列 */}
+                  {savingsTab==="USD" && (
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",paddingTop:8,borderTop:`1px solid ${T.border}`}}>
+                      <div style={{fontSize:11,color:T.muted}}>
+                        {usdRate
+                          ? `1 USD ≈ NT$ ${usdRate}　更新：${usdRateTime}`
+                          : "尚未取得匯率"}
+                      </div>
+                      <button onClick={fetchUsdRate} disabled={usdRateLoading}
+                        style={{padding:"5px 11px",background:usdRateLoading?T.border:T.accentLight,color:usdRateLoading?T.muted:T.accent,border:`1px solid ${T.accent}44`,borderRadius:8,fontSize:11,fontWeight:700,cursor:usdRateLoading?"not-allowed":"pointer",fontFamily:"inherit"}}>
+                        {usdRateLoading?"載入中…":"🔄 更新匯率"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 存款列表 */}
+              {currentRecs.length===0 ? (
+                <div style={{textAlign:"center",color:T.muted,padding:"36px 0",fontSize:14}}>
+                  <div style={{fontSize:28,marginBottom:8}}>{savingsTab==="TWD"?"🏦":"💵"}</div>
+                  尚未輸入{savingsTab==="TWD"?"台幣":"美金"}帳戶餘額
+                </div>
+              ) : (
+                <div style={{background:T.card,borderRadius:14,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,0.04)"}}>
+                  {/* 表頭 */}
+                  <div style={{display:"grid",gridTemplateColumns:savingsTab==="USD"?"1fr 72px 72px 28px 24px":"1fr 90px 28px 24px",gap:0,background:T.accentLight,padding:"8px 12px"}}>
+                    {(savingsTab==="USD"
+                      ? ["帳戶","美金","≈台幣","",""]
+                      : ["銀行別","餘額","",""]
+                    ).map((h,i)=>(
+                      <div key={i} style={{fontSize:11,fontWeight:700,color:T.accent,textAlign:(savingsTab==="USD"?i===1||i===2:i===1)?"right":"left"}}>{h}</div>
+                    ))}
+                  </div>
+                  {currentRecs.map((r,i)=>(
+                    <div key={r.id} style={{display:"grid",gridTemplateColumns:savingsTab==="USD"?"1fr 72px 72px 28px 24px":"1fr 90px 28px 24px",gap:0,padding:"10px 12px",borderBottom:i<currentRecs.length-1?`1px solid ${T.border}`:"none",alignItems:"center"}}>
+                      <div style={{minWidth:0}}>
+                        <div style={{fontSize:13,fontWeight:600,color:T.ink}}>{r.bank}</div>
+                        <div style={{fontSize:10,color:T.muted,marginTop:1}}>{r.date||r.updatedAt}</div>
+                      </div>
+                      <div style={{fontSize:13,fontWeight:700,color:T.accent,textAlign:"right"}}>
+                        {savingsTab==="TWD"?fmt(r.balance):`$${r.balance.toLocaleString()}`}
+                      </div>
+                      {savingsTab==="USD" && (
+                        <div style={{fontSize:12,fontWeight:600,color:T.muted,textAlign:"right"}}>
+                          {usdRate?fmt(Math.round(r.balance*usdRate)):"—"}
+                        </div>
+                      )}
+                      {/* 編輯小按鈕 */}
+                      <button onClick={()=>{
+                        setSavingsForm({date:r.date||today(),bank:r.bank,balance:String(r.balance),currency:r.currency||"TWD"});
+                        setEditSavingsId(r.id);
+                        setShowSavingsForm(true);
+                      }} style={{padding:"3px 6px",background:T.accentLight,color:T.accent,border:`1px solid ${T.accent}44`,borderRadius:6,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
+                        ✏️
+                      </button>
+                      {/* 刪除叉叉 */}
+                      <button onClick={()=>deleteDoc(doc(db,"savingsRecs",r.id))}
+                        style={{width:22,height:22,background:"none",color:T.muted,border:`1px solid ${T.border}`,borderRadius:5,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",padding:0,flexShrink:0}}>
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </>
-          )}
+            );
+          })()}
 
           {/* 預算 */}
           {tab==="budget" && (
