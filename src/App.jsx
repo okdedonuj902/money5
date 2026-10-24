@@ -211,7 +211,7 @@ function RecordForm({ isEdit, initialForm, categories, calcIcon, creditCards, on
           <div style={{marginBottom:13}}>
             <label style={labelSt}>金額（NT$）*</label>
             <div style={{display:"flex",gap:8}}>
-              <input type="number" placeholder="0" value={form.amount} onChange={e=>setForm(f=>({...f,amount:e.target.value}))}
+              <input type="number" inputMode="decimal" placeholder="0" value={form.amount} onChange={e=>setForm(f=>({...f,amount:e.target.value}))}
                 style={{...inputSt,flex:1,fontSize:20,fontWeight:700,textAlign:"right"}}/>
               <button onClick={()=>setShowCalc(true)}
                 style={{padding:0,background:T.accentLight,border:`1.5px solid ${T.accent}44`,borderRadius:11,cursor:"pointer",flexShrink:0,width:50,height:50,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden",fontSize:24}}>
@@ -470,262 +470,6 @@ function SettingsTab({ categories, onSaveCategories, calcIcon, setCalcIcon }) {
 // ══════════════════════════════════════════════════════
 // 主 App
 // ══════════════════════════════════════════════════════
-// ══════════════════════════════════════════════════════
-// 比價 Modal
-// ══════════════════════════════════════════════════════
-function CompareModal({
-  compareItems, comparePrices, compareView, setCompareView,
-  showItemForm, setShowItemForm, showPriceForm, setShowPriceForm,
-  itemFormName, setItemFormName, itemFormUnit, setItemFormUnit,
-  priceForm, setPriceForm, editItemId, setEditItemId,
-  addCompareItem, addComparePrice, onClose, db, T, cardSt, fmt
-}) {
-  return (
-    <div style={{position:"fixed",inset:0,zIndex:1050,background:T.bg,display:"flex",flexDirection:"column",overflow:"hidden"}}>
-
-        {/* 頂部 bar */}
-        <div style={{background:T.card,borderBottom:`1px solid ${T.border}`,padding:"18px 18px 14px",flexShrink:0,paddingTop:"max(18px, env(safe-area-inset-top))"}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:compareView!==null?8:0}}>
-            <div style={{display:"flex",alignItems:"center",gap:10}}>
-              {compareView!==null && (
-                <button onClick={()=>{ setCompareView(null); setShowPriceForm(false); }}
-                  style={{padding:"7px 12px",border:`1.5px solid ${T.border}`,borderRadius:9,background:"none",color:T.muted,fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
-                  ← 返回
-                </button>
-              )}
-              <div>
-                <div style={{fontSize:18,fontWeight:700,color:T.ink,letterSpacing:-0.3}}>
-                  {compareView===null ? "🏷️ 比價" : `🏷️ ${compareItems.find(i=>i.id===compareView)?.name||""}`}
-                </div>
-                {compareView===null&&<div style={{fontSize:12,color:T.muted,marginTop:1}}>點品項查看比價排行</div>}
-              </div>
-            </div>
-            <button onClick={onClose}
-              style={{padding:"7px 14px",borderRadius:9,background:T.accentLight,border:`1.5px solid ${T.accent}44`,color:T.accent,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-              返回主畫面
-            </button>
-          </div>
-        </div>
-
-        {/* 內容區（可滾動）*/}
-        <div style={{overflowY:"auto",flex:1,padding:16}}>
-
-          {compareView===null ? (
-            /* ── 品項列表 ── */
-            <>
-              <div style={{display:"flex",justifyContent:"flex-end",marginBottom:14}}>
-                <button onClick={()=>{ setShowItemForm(v=>!v); setItemFormName(""); setItemFormUnit(""); setEditItemId(null); }}
-                  style={{padding:"8px 16px",background:showItemForm?T.accent:"none",color:showItemForm?"#fff":T.accent,border:`1.5px solid ${T.accent}`,borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                  {showItemForm?"✕ 取消":"＋ 新增品項"}
-                </button>
-              </div>
-
-              {showItemForm && (
-                <div style={{...cardSt,background:T.accentLight,marginBottom:14}}>
-                  <div style={{fontSize:12,fontWeight:700,color:T.ink,marginBottom:10}}>{editItemId?"編輯品項":"新增比價品項"}</div>
-                  <div style={{marginBottom:8}}>
-                    <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:4}}>品項名稱 *</div>
-                    <input value={itemFormName} onChange={e=>setItemFormName(e.target.value)}
-                      onKeyDown={e=>{ if(e.key==="Enter") addCompareItem(); }}
-                      placeholder="例：鮮奶、蘋果、優格"
-                      style={{width:"100%",padding:"9px 12px",borderRadius:10,border:`1.5px solid ${T.border}`,fontSize:14,color:T.ink,background:"#fff",outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}
-                      autoFocus/>
-                  </div>
-                  <div style={{marginBottom:12}}>
-                    <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:4}}>單位量詞 *（計算單價用）</div>
-                    <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6}}>
-                      {["ml","g","公克","顆","個","片","包","盒","瓶","罐"].map(u=>(
-                        <button key={u} onClick={()=>setItemFormUnit(u)}
-                          style={{padding:"5px 11px",borderRadius:8,border:`1.5px solid ${itemFormUnit===u?T.accent:T.border}`,background:itemFormUnit===u?T.accentLight:"#fff",color:itemFormUnit===u?T.accent:T.muted,fontSize:12,fontWeight:itemFormUnit===u?700:400,cursor:"pointer",fontFamily:"inherit"}}>
-                          {u}
-                        </button>
-                      ))}
-                    </div>
-                    <input value={itemFormUnit} onChange={e=>setItemFormUnit(e.target.value)}
-                      placeholder="或自行輸入量詞"
-                      style={{width:"100%",padding:"8px 12px",borderRadius:10,border:`1.5px solid ${T.border}`,fontSize:13,color:T.ink,background:"#fff",outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
-                  </div>
-                  <button onClick={addCompareItem}
-                    style={{width:"100%",padding:"10px 0",background:T.accent,color:"#fff",border:"none",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                    {editItemId?"儲存":"新增品項"}
-                  </button>
-                </div>
-              )}
-
-              {compareItems.length===0 && !showItemForm && (
-                <div style={{textAlign:"center",color:T.muted,padding:"48px 0",fontSize:14}}>
-                  <div style={{fontSize:36,marginBottom:10}}>🏷️</div>
-                  還沒有比價品項<br/>點「＋ 新增品項」開始
-                </div>
-              )}
-
-              {compareItems.map(item=>{
-                const prices = comparePrices.filter(p=>p.itemId===item.id).sort((a,b)=>a.unitCost-b.unitCost);
-                const best   = prices[0];
-                return (
-                  <div key={item.id} style={{...cardSt,cursor:"pointer"}} onClick={()=>{ setCompareView(item.id); setShowPriceForm(false); }}>
-                    <div style={{display:"flex",alignItems:"center",gap:10}}>
-                      <div style={{width:42,height:42,borderRadius:12,background:T.accentLight,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>🏷️</div>
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{display:"flex",alignItems:"center",gap:6}}>
-                          <span style={{fontSize:14,fontWeight:700,color:T.ink}}>{item.name}</span>
-                          {item.unit&&<span style={{fontSize:11,background:T.warmLight,color:T.warm,borderRadius:6,padding:"1px 7px",fontWeight:600}}>/{item.unit}</span>}
-                        </div>
-                        {best ? (
-                          <div style={{fontSize:11,color:T.muted,marginTop:3}}>
-                            最優惠 <span style={{color:T.accent,fontWeight:700}}>{best.store}</span>
-                            {" · 單價 "}<span style={{color:T.accent,fontWeight:700}}>NT$ {best.unitCost}</span>/{item.unit||"單位"}
-                          </div>
-                        ) : <div style={{fontSize:11,color:T.muted,marginTop:3}}>尚未有記錄</div>}
-                      </div>
-                      <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:5,flexShrink:0}}>
-                        <span style={{fontSize:12,color:T.muted}}>{prices.length} 筆 ›</span>
-                        <div style={{display:"flex",gap:5}}>
-                          <button onClick={e=>{ e.stopPropagation(); setEditItemId(item.id); setItemFormName(item.name); setItemFormUnit(item.unit||""); setShowItemForm(true); }}
-                            style={{fontSize:11,color:T.accent,background:T.accentLight,border:`1px solid ${T.accent}44`,borderRadius:6,padding:"2px 8px",cursor:"pointer",fontFamily:"inherit"}}>
-                            編輯
-                          </button>
-                          <button onClick={async e=>{ e.stopPropagation();
-                            await deleteDoc(doc(db,"compareItems",item.id));
-                            comparePrices.filter(p=>p.itemId===item.id).forEach(p=>deleteDoc(doc(db,"comparePrices",p.id)));
-                          }} style={{fontSize:11,color:T.muted,background:"none",border:`1px solid ${T.border}`,borderRadius:6,padding:"2px 8px",cursor:"pointer",fontFamily:"inherit"}}>
-                            刪除
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </>
-          ) : (
-            /* ── 品項比價詳細頁 ── */
-            (()=>{
-              const item   = compareItems.find(i=>i.id===compareView);
-              if(!item) return null;
-              const unit   = item.unit || "單位";
-              const prices = comparePrices.filter(p=>p.itemId===compareView).sort((a,b)=>a.unitCost-b.unitCost);
-              return (
-                <>
-                  <div style={{display:"flex",justifyContent:"flex-end",marginBottom:14}}>
-                    <button onClick={()=>setShowPriceForm(v=>!v)}
-                      style={{padding:"8px 16px",background:showPriceForm?T.accent:"none",color:showPriceForm?"#fff":T.accent,border:`1.5px solid ${T.accent}`,borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                      {showPriceForm?"✕ 取消":"＋ 新增記錄"}
-                    </button>
-                  </div>
-
-                  {/* 新增價格表單 */}
-                  {showPriceForm && (
-                    <div style={{...cardSt,background:T.accentLight,marginBottom:14}}>
-                      <div style={{fontSize:12,fontWeight:700,color:T.ink,marginBottom:10}}>新增比價記錄</div>
-                      <div style={{marginBottom:8}}>
-                        <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:4}}>購買地點 *</div>
-                        <input value={priceForm.store} onChange={e=>setPriceForm(f=>({...f,store:e.target.value}))}
-                          placeholder="例：家樂福、全聯、7-11"
-                          style={{width:"100%",padding:"9px 11px",borderRadius:9,border:`1.5px solid ${T.border}`,fontSize:13,color:T.ink,background:"#fff",outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
-                      </div>
-                      <div style={{display:"flex",gap:8,marginBottom:8}}>
-                        <div style={{flex:1}}>
-                          <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:4}}>價格（NT$）*</div>
-                          <input type="number" value={priceForm.price} onChange={e=>setPriceForm(f=>({...f,price:e.target.value}))}
-                            placeholder="0"
-                            style={{width:"100%",padding:"9px 11px",borderRadius:9,border:`1.5px solid ${T.border}`,fontSize:15,fontWeight:700,color:T.ink,background:"#fff",outline:"none",boxSizing:"border-box",fontFamily:"inherit",textAlign:"right"}}/>
-                        </div>
-                        <div style={{flex:1}}>
-                          <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:4}}>規格數量（{unit}）</div>
-                          <input type="number" value={priceForm.specQty} onChange={e=>setPriceForm(f=>({...f,specQty:e.target.value}))}
-                            placeholder={`數量（${unit}）`}
-                            style={{width:"100%",padding:"9px 11px",borderRadius:9,border:`1.5px solid ${T.border}`,fontSize:15,fontWeight:700,color:T.ink,background:"#fff",outline:"none",boxSizing:"border-box",fontFamily:"inherit",textAlign:"right"}}/>
-                        </div>
-                      </div>
-                      {/* 即時預覽單價 */}
-                      {priceForm.price&&priceForm.specQty&&+priceForm.specQty>0 && (
-                        <div style={{background:"#fff",borderRadius:9,padding:"8px 12px",marginBottom:8,border:`1px solid ${T.accent}44`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                          <span style={{fontSize:12,color:T.muted}}>單價預覽</span>
-                          <span style={{fontSize:15,fontWeight:700,color:T.accent}}>
-                            NT$ {(+priceForm.price / +priceForm.specQty).toFixed(2)} / {unit}
-                          </span>
-                        </div>
-                      )}
-                      <div style={{marginBottom:12}}>
-                        <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:4}}>備註（選填）</div>
-                        <input value={priceForm.note} onChange={e=>setPriceForm(f=>({...f,note:e.target.value}))}
-                          placeholder="例：特價期間、會員優惠…"
-                          style={{width:"100%",padding:"9px 11px",borderRadius:9,border:`1.5px solid ${T.border}`,fontSize:13,color:T.ink,background:"#fff",outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
-                      </div>
-                      <button onClick={()=>addComparePrice(compareView)}
-                        style={{width:"100%",padding:"11px 0",background:T.accent,color:"#fff",border:"none",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                        ✓ 送出記錄
-                      </button>
-                    </div>
-                  )}
-
-                  {/* 比價排行 */}
-                  {prices.length===0 ? (
-                    <div style={{textAlign:"center",color:T.muted,padding:"40px 0",fontSize:14}}>
-                      <div style={{fontSize:28,marginBottom:8}}>📊</div>
-                      還沒有記錄，點「＋ 新增記錄」加入
-                    </div>
-                  ) : (
-                    <>
-                      <div style={{fontSize:12,fontWeight:700,color:T.muted,marginBottom:10,letterSpacing:0.5}}>
-                        比價排行（單價由低到高）
-                      </div>
-                      {prices.map((p,i)=>{
-                        const isFirst = i===0;
-                        const isLast  = i===prices.length-1 && prices.length>1;
-                        return (
-                          <div key={p.id} style={{
-                            ...cardSt, marginBottom:8,
-                            border:`1.5px solid ${isFirst?"#6ab187":isLast?"#FFCCCC":T.border}`,
-                            background:isFirst?"#EDF6EF":isLast?"#FFF8F8":T.card,
-                          }}>
-                            <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
-                              <div style={{width:34,height:34,borderRadius:10,background:isFirst?"#6ab187":isLast?"#FFD0D0":T.accentLight,display:"flex",alignItems:"center",justifyContent:"center",fontSize:isFirst?18:14,fontWeight:700,color:isFirst?"#fff":isLast?"#C0392B":T.muted,flexShrink:0}}>
-                                {isFirst?"🥇":i===1?"🥈":i===2?"🥉":`${i+1}`}
-                              </div>
-                              <div style={{flex:1,minWidth:0}}>
-                                <div style={{fontSize:14,fontWeight:700,color:T.ink}}>{p.store}</div>
-                                {p.note&&<div style={{fontSize:11,color:T.muted,marginTop:2}}>{p.note}</div>}
-                                <div style={{fontSize:11,color:T.muted,marginTop:3}}>
-                                  售價 <span style={{fontWeight:600,color:T.ink}}>NT$ {p.price}</span>
-                                  {p.specQty&&<span>　規格 <span style={{fontWeight:600,color:T.ink}}>{p.specQty}{unit}</span></span>}
-                                </div>
-                              </div>
-                              <div style={{textAlign:"right",flexShrink:0}}>
-                                <div style={{fontSize:18,fontWeight:800,color:isFirst?T.accent:T.ink}}>
-                                  {p.unitCost.toFixed(2)}
-                                </div>
-                                <div style={{fontSize:11,color:T.muted}}>元/{unit}</div>
-                              </div>
-                              <button onClick={()=>deleteDoc(doc(db,"comparePrices",p.id))}
-                                style={{fontSize:14,color:T.border,background:"none",border:"none",cursor:"pointer",padding:"2px",flexShrink:0,marginTop:2}}>✕</button>
-                            </div>
-                          </div>
-                        );
-                      })}
-
-                      {/* 價差分析 */}
-                      {prices.length>1 && (
-                        <div style={{background:T.accentLight,borderRadius:12,padding:"11px 14px",marginTop:4}}>
-                          <div style={{fontSize:11,fontWeight:700,color:T.accent,marginBottom:5}}>💡 價差分析</div>
-                          <div style={{fontSize:13,color:T.ink}}>
-                            選 <span style={{fontWeight:700,color:T.accent}}>{prices[0].store}</span> 比 <span style={{fontWeight:700,color:"#C0392B"}}>{prices[prices.length-1].store}</span> 每 {unit} 省{" "}
-                            <span style={{fontWeight:700,color:T.accent}}>NT$ {(prices[prices.length-1].unitCost - prices[0].unitCost).toFixed(2)}</span>
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </>
-              );
-            })()
-          )}
-        </div>
-    </div>
-  );
-}
-
 // ══════════════════════════════════════════════════════
 // 信用卡管理元件
 // ══════════════════════════════════════════════════════
@@ -987,124 +731,12 @@ export default function App() {
     });
   },[recurringItems, records]);
 
-  // ── 隨手記 (Quick Ledger) ──
-  const [quickEntries,    setQuickEntries]    = useState([]);
-  const [showQuickLedger, setShowQuickLedger] = useState(false);
-  const [quickForm,       setQuickForm]       = useState({name:"",amount:"",note:""});
-  const [quickCalcOpen,   setQuickCalcOpen]   = useState(false);
-  const [quickSaving,     setQuickSaving]     = useState(false);
-
-  useEffect(()=>{
-    const u=onSnapshot(
-      collection(db,"quickLedgerEntries"),
-      snap=>{
-        const docs=snap.docs.map(d=>({id:d.id,...d.data()}));
-        docs.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
-        setQuickEntries(docs);
-      }
-    );
-    return u;
-  },[]);
-
-  async function addQuickEntry(){
-    const name=quickForm.name.trim();
-    const amount=quickForm.amount;
-    if(!name&&!amount) return;
-    setQuickSaving(true);
-    try{
-      await addDoc(collection(db,"quickLedgerEntries"),{
-        name, amount: amount===''?0:Number(amount),
-        note:quickForm.note.trim(), done:false, createdAt:Date.now()
-      });
-      setQuickForm({name:"",amount:"",note:""});
-    }finally{ setQuickSaving(false); }
-  }
-
-  async function toggleQuickDone(id, done){
-    const {setDoc:_s,..._}={}; // unused — using imported setDoc
-    await setDoc(doc(db,"quickLedgerEntries",id),{done},{ merge:true });
-  }
-
-  function fmtQuickTime(ts){
-    const d=new Date(ts);
-    const mm=d.getMonth()+1, dd=d.getDate();
-    let h=d.getHours();
-    const m=d.getMinutes().toString().padStart(2,"0");
-    const ap=h<12?"上午":"下午";
-    h=h%12; if(h===0)h=12;
-    return `${mm}/${dd} ${ap}${h}:${m}`;
-  }
-
-  function hashRotate(id){
-    let hash=0;
-    for(let i=0;i<id.length;i++){ hash=(hash*31+id.charCodeAt(i))|0; }
-    return (Math.abs(hash)%7)-3;
-  }
-
-  const QUICK_COLORS=[
-    {bg:"#FFE3EC",pin:"#FF6B95"},
-    {bg:"#FFF3CE",pin:"#FFC53D"},
-    {bg:"#DFF7EF",pin:"#4FCBAE"},
-    {bg:"#EBE2FF",pin:"#A88CFF"},
-    {bg:"#FFE8D6",pin:"#E0956A"},
-  ];
 
   async function addRecurringItem() {
     if(!recurForm.day||!recurForm.item||!recurForm.catMain||!recurForm.amount||isNaN(recurForm.amount)||toMoney(recurForm.amount)<=0) return;
     await addDoc(collection(db,"recurringItems"),{...recurForm,amount:toMoney(recurForm.amount)});
     setRecurForm({day:"1",item:"",catMain:"",catSub:"",payment:"cash",creditCard:"",amount:"",note:""});
     setShowRecurForm(false);
-  }
-
-  // ── 比價 ──
-  const [showCompare,     setShowCompare]     = useState(false); // 比價 Modal
-  const [compareItems,    setCompareItems]    = useState([]); // 大品項
-  const [comparePrices,   setComparePrices]   = useState([]); // 各品項的價格記錄
-  const [compareView,     setCompareView]     = useState(null); // 目前展開的品項 id
-  const [showItemForm,    setShowItemForm]    = useState(false);
-  const [showPriceForm,   setShowPriceForm]   = useState(false);
-  const [itemFormName,    setItemFormName]    = useState("");
-  const [itemFormUnit,    setItemFormUnit]    = useState(""); // 量詞，e.g. ml, 顆, g
-  const [priceForm,       setPriceForm]       = useState({store:"",price:"",specQty:"",note:""});
-  const [editItemId,      setEditItemId]      = useState(null); // 編輯品項名稱
-
-  useEffect(()=>{
-    const u=onSnapshot(collection(db,"compareItems"),snap=>{
-      setCompareItems(snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>a.name.localeCompare(b.name,"zh-TW")));
-    });
-    return u;
-  },[]);
-
-  useEffect(()=>{
-    const u=onSnapshot(collection(db,"comparePrices"),snap=>{
-      setComparePrices(snap.docs.map(d=>({id:d.id,...d.data()})));
-    });
-    return u;
-  },[]);
-
-  async function addCompareItem(){
-    if(!itemFormName.trim()) return;
-    if(editItemId){
-      await setDoc(doc(db,"compareItems",editItemId),{name:itemFormName.trim(),unit:itemFormUnit.trim()},{merge:true});
-      setEditItemId(null);
-    } else {
-      await addDoc(collection(db,"compareItems"),{name:itemFormName.trim(),unit:itemFormUnit.trim(),createdAt:Date.now()});
-    }
-    setItemFormName(""); setItemFormUnit(""); setShowItemForm(false);
-  }
-
-  async function addComparePrice(itemId){
-    if(!priceForm.store.trim()||!priceForm.price||isNaN(priceForm.price)||+priceForm.price<=0) return;
-    const specQty = toMoney(priceForm.specQty);
-    const price   = toMoney(priceForm.price);
-    // 單位成本 = 價格 ÷ 規格數量（若無規格則 unitCost = price），用 Math.round 避免浮點誤差
-    const unitCost = (specQty>0) ? Math.round((price/specQty)*10000)/10000 : price;
-    await addDoc(collection(db,"comparePrices"),{
-      itemId, store:priceForm.store.trim(), price, specQty:specQty||null,
-      note:priceForm.note.trim(), unitCost, createdAt:Date.now()
-    });
-    setPriceForm({store:"",price:"",specQty:"",note:""});
-    setShowPriceForm(false);
   }
 
   async function fetchUsdRate() {
@@ -1168,16 +800,8 @@ export default function App() {
           </div>
           <div style={{display:"flex",gap:7,marginBottom:14}}>
             <button onClick={()=>setFormState({mode:"add"})}
-              style={{flex:2,padding:"12px 0",background:T.accent,color:"#fff",border:"none",borderRadius:12,fontSize:13,fontWeight:700,cursor:"pointer",letterSpacing:0.3,fontFamily:"inherit",boxShadow:`0 3px 10px ${T.accent}44`}}>
+              style={{flex:1,padding:"12px 0",background:T.accent,color:"#fff",border:"none",borderRadius:12,fontSize:13,fontWeight:700,cursor:"pointer",letterSpacing:0.3,fontFamily:"inherit",boxShadow:`0 3px 10px ${T.accent}44`}}>
               ＋ 新增支出
-            </button>
-            <button onClick={()=>setShowCompare(true)}
-              style={{flex:1,padding:"12px 0",background:T.warmLight,color:T.warm,border:`1.5px solid ${T.warm}55`,borderRadius:12,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>
-              🏷️ 比價
-            </button>
-            <button onClick={()=>setShowQuickLedger(true)}
-              style={{flex:1,padding:"12px 0",background:"#FFF3CE",color:"#B8860B",border:"2px dashed #FFD874",borderRadius:12,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>
-              📝 隨手記
             </button>
           </div>
           <div style={{display:"flex",borderTop:`1px solid ${T.border}`,overflowX:"auto"}}>
@@ -1505,7 +1129,7 @@ export default function App() {
                   </div>
                   <div style={{marginBottom:10}}>
                     <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:4}}>金額（NT$）*</div>
-                    <input type="number" placeholder="0" value={incomeForm.amount} onChange={e=>setIncomeForm(f=>({...f,amount:e.target.value}))}
+                    <input type="number" inputMode="decimal" placeholder="0" value={incomeForm.amount} onChange={e=>setIncomeForm(f=>({...f,amount:e.target.value}))}
                       style={{width:"100%",padding:"9px 12px",borderRadius:10,border:`1.5px solid ${T.border}`,fontSize:16,fontWeight:700,color:T.ink,background:"#fff",outline:"none",boxSizing:"border-box",fontFamily:"inherit",textAlign:"right"}}/>
                   </div>
                   <div style={{marginBottom:14}}>
@@ -1627,7 +1251,7 @@ export default function App() {
                   </div>
                   <div style={{marginBottom:10}}>
                     <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:4}}>金額 *</div>
-                    <input type="number" placeholder="0" value={creditForm.amount} onChange={e=>setCreditForm(f=>({...f,amount:e.target.value}))}
+                    <input type="number" inputMode="decimal" placeholder="0" value={creditForm.amount} onChange={e=>setCreditForm(f=>({...f,amount:e.target.value}))}
                       style={{width:"100%",padding:"9px 12px",borderRadius:10,border:`1.5px solid ${T.border}`,fontSize:16,fontWeight:700,color:T.ink,background:"#fff",outline:"none",boxSizing:"border-box",fontFamily:"inherit",textAlign:"right"}}/>
                   </div>
                   <div style={{marginBottom:14}}>
@@ -1777,7 +1401,7 @@ export default function App() {
                   </div>
                   <div style={{marginBottom:12}}>
                     <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:4}}>餘額（{currencySymbol}）*</div>
-                    <input type="number" placeholder="0" value={savingsForm.balance} onChange={e=>setSavingsForm(f=>({...f,balance:e.target.value}))}
+                    <input type="number" inputMode="decimal" placeholder="0" value={savingsForm.balance} onChange={e=>setSavingsForm(f=>({...f,balance:e.target.value}))}
                       style={{width:"100%",padding:"9px 12px",borderRadius:10,border:`1.5px solid ${T.border}`,fontSize:16,fontWeight:700,color:T.ink,background:"#fff",outline:"none",boxSizing:"border-box",fontFamily:"inherit",textAlign:"right"}}/>
                   </div>
                   <button onClick={addSavingsRec}
@@ -1896,7 +1520,7 @@ export default function App() {
                   <div style={{marginBottom:14,paddingBottom:14,borderBottom:`1px solid ${T.border}`}}>
                     <div style={{fontSize:12,fontWeight:700,color:T.ink,marginBottom:8}}>📌 月總支出預算</div>
                     <div style={{display:"flex",alignItems:"center",gap:8}}>
-                      <input type="number" placeholder="不設定" value={totalBudgetDraft}
+                      <input type="number" inputMode="decimal" placeholder="不設定" value={totalBudgetDraft}
                         onChange={e=>setTotalBudgetDraft(e.target.value)}
                         style={{flex:1,padding:"10px 12px",borderRadius:10,border:`1.5px solid ${T.border}`,fontSize:18,fontWeight:700,color:T.ink,background:"#fff",outline:"none",textAlign:"right",fontFamily:"inherit"}}/>
                       <span style={{fontSize:12,color:T.muted,flexShrink:0}}>元／月</span>
@@ -1912,7 +1536,7 @@ export default function App() {
                         <span style={{fontSize:16}}>{c.icon}</span>
                         <span style={{fontSize:12,color:T.ink,fontWeight:600}}>{c.label}</span>
                       </div>
-                      <input type="number" placeholder="不設定" value={budgetDraft[c.id]||""}
+                      <input type="number" inputMode="decimal" placeholder="不設定" value={budgetDraft[c.id]||""}
                         onChange={e=>setBudgetDraft(d=>({...d,[c.id]:e.target.value}))}
                         style={{flex:1,padding:"8px 10px",borderRadius:9,border:`1.5px solid ${T.border}`,fontSize:13,color:T.ink,background:"#fff",outline:"none",textAlign:"right",fontFamily:"inherit"}}/>
                       <span style={{fontSize:11,color:T.muted,flexShrink:0}}>元</span>
@@ -2088,7 +1712,7 @@ export default function App() {
 
                   <div style={{marginBottom:10}}>
                     <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:4}}>金額（NT$）*</div>
-                    <input type="number" placeholder="0" value={recurForm.amount} onChange={e=>setRecurForm(f=>({...f,amount:e.target.value}))}
+                    <input type="number" inputMode="decimal" placeholder="0" value={recurForm.amount} onChange={e=>setRecurForm(f=>({...f,amount:e.target.value}))}
                       style={{width:"100%",padding:"9px 12px",borderRadius:10,border:`1.5px solid ${T.border}`,fontSize:16,fontWeight:700,color:T.ink,background:"#fff",outline:"none",boxSizing:"border-box",fontFamily:"inherit",textAlign:"right"}}/>
                   </div>
 
@@ -2144,21 +1768,6 @@ export default function App() {
           )}
 
           {/* 設定 */}
-          {/* 比價 */}
-          {/* 比價 Modal */}
-          {showCompare && <CompareModal
-            compareItems={compareItems} comparePrices={comparePrices}
-            compareView={compareView} setCompareView={setCompareView}
-            showItemForm={showItemForm} setShowItemForm={setShowItemForm}
-            showPriceForm={showPriceForm} setShowPriceForm={setShowPriceForm}
-            itemFormName={itemFormName} setItemFormName={setItemFormName}
-            itemFormUnit={itemFormUnit} setItemFormUnit={setItemFormUnit}
-            priceForm={priceForm} setPriceForm={setPriceForm}
-            editItemId={editItemId} setEditItemId={setEditItemId}
-            addCompareItem={addCompareItem} addComparePrice={addComparePrice}
-            onClose={()=>{ setShowCompare(false); setCompareView(null); setShowItemForm(false); setShowPriceForm(false); }}
-            db={db} T={T} cardSt={cardSt} fmt={fmt}
-          />}
 
           {tab==="settings" && (
             <SettingsTab categories={categories} onSaveCategories={saveCategories} calcIcon={calcIcon} setCalcIcon={setCalcIcon}/>
@@ -2179,144 +1788,6 @@ export default function App() {
         />
       )}
 
-      {/* 凌亂記錄 Modal */}
-      {showQuickLedger && (
-        <div style={{position:"fixed",inset:0,zIndex:1300,overflowY:"auto",
-          background:"radial-gradient(circle at 1px 1px,#EFE4D2 1.5px,transparent 1.5px) 0 0/22px 22px, #FFF8EC",
-          fontFamily:"'Nunito','Noto Sans TC',sans-serif"}}>
-          <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet"/>
-
-          {/* 頂部標題列 */}
-          <div style={{background:"rgba(255,248,236,0.92)",backdropFilter:"blur(8px)",padding:"16px 18px 12px",position:"sticky",top:0,zIndex:10,display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:"2px dashed #EAE0D1"}}>
-            <div>
-              <div style={{fontFamily:"'Baloo 2',sans-serif",fontWeight:800,fontSize:22,color:"#4A3B32",letterSpacing:0.5}}>
-                📝 隨手記
-              </div>
-              <div style={{fontSize:11,color:"#8A7A6D",fontWeight:600,marginTop:1}}>快速記下，之後再整理</div>
-            </div>
-            <button onClick={()=>setShowQuickLedger(false)}
-              style={{background:"rgba(255,107,149,0.12)",border:"none",borderRadius:10,padding:"8px 14px",fontSize:13,fontWeight:800,color:"#FF6B95",cursor:"pointer",fontFamily:"inherit"}}>
-              ✕ 關閉
-            </button>
-          </div>
-
-          {/* 輸入區 */}
-          <div style={{maxWidth:420,margin:"18px auto 0",padding:"0 16px"}}>
-            <div style={{background:"#FFFDF7",borderRadius:22,padding:"20px 18px 16px",boxShadow:"0 10px 24px rgba(74,59,50,0.12)",border:"2px dashed #EAE0D1",position:"relative"}}>
-              <div style={{position:"absolute",top:-14,left:18,fontSize:22,background:"#FFF8EC",padding:"2px 8px",borderRadius:"50%"}}>✏️</div>
-              
-              <div style={{marginBottom:10}}>
-                <div style={{fontSize:12,fontWeight:800,color:"#8A7A6D",marginBottom:5,letterSpacing:0.3}}>品項名稱</div>
-                <input value={quickForm.name} onChange={e=>setQuickForm(f=>({...f,name:e.target.value}))}
-                  onKeyDown={e=>{ if(e.key==="Enter"){ e.preventDefault(); addQuickEntry(); } }}
-                  placeholder="買了什麼？"
-                  style={{width:"100%",border:"2px solid #EAE0D1",borderRadius:14,padding:"10px 12px",fontFamily:"'Nunito',sans-serif",fontSize:15,fontWeight:600,color:"#4A3B32",background:"#fff",outline:"none",boxSizing:"border-box"}}/>
-              </div>
-
-              <div style={{marginBottom:10}}>
-                <div style={{fontSize:12,fontWeight:800,color:"#8A7A6D",marginBottom:5}}>金額</div>
-                <div style={{display:"flex",gap:8}}>
-                  <input type="number" value={quickForm.amount} onChange={e=>setQuickForm(f=>({...f,amount:e.target.value}))}
-                    onKeyDown={e=>{ if(e.key==="Enter"){ e.preventDefault(); addQuickEntry(); } }}
-                    placeholder="0"
-                    style={{flex:1,border:"2px solid #EAE0D1",borderRadius:14,padding:"10px 12px",fontFamily:"'Baloo 2',sans-serif",fontSize:19,fontWeight:700,color:"#4A3B32",background:"#fff",outline:"none",textAlign:"right"}}/>
-                  <button onClick={()=>setQuickCalcOpen(true)}
-                    style={{flexShrink:0,width:46,border:"2px solid #EAE0D1",borderRadius:14,background:"#C6B4FF",fontSize:20,cursor:"pointer",transition:"transform 0.12s"}}>
-                    🧮
-                  </button>
-                </div>
-              </div>
-
-              <div style={{marginBottom:14}}>
-                <div style={{fontSize:12,fontWeight:800,color:"#8A7A6D",marginBottom:5}}>備註（選填）</div>
-                <textarea value={quickForm.note} onChange={e=>setQuickForm(f=>({...f,note:e.target.value}))}
-                  placeholder="補充說明…" rows={2}
-                  style={{width:"100%",border:"2px solid #EAE0D1",borderRadius:14,padding:"10px 12px",fontFamily:"'Nunito',sans-serif",fontSize:14,fontWeight:600,color:"#4A3B32",background:"#fff",outline:"none",resize:"none",boxSizing:"border-box"}}/>
-              </div>
-
-              <button onClick={addQuickEntry} disabled={quickSaving}
-                style={{width:"100%",padding:13,border:"none",borderRadius:16,background:"linear-gradient(135deg,#FF8FAB,#FF6B95)",color:"#fff",fontFamily:"'Baloo 2',sans-serif",fontWeight:700,fontSize:17,cursor:"pointer",boxShadow:"0 6px 14px rgba(255,107,149,0.35)",opacity:quickSaving?0.7:1}}>
-                {quickSaving?"儲存中…":"＋ 記下這筆"}
-              </button>
-            </div>
-
-            {/* 統計列 */}
-            {quickEntries.filter(e=>!e.done).length>0 && (
-              <div style={{display:"flex",justifyContent:"space-between",padding:"10px 4px",fontSize:13,fontWeight:800,color:"#8A7A6D",maxWidth:420,margin:"0 auto"}}>
-                <span>待整理 <span style={{color:"#FF6B95",fontFamily:"'Baloo 2',sans-serif",fontSize:15}}>{quickEntries.filter(e=>!e.done).length}</span> 筆</span>
-                <span>合計 <span style={{color:"#FF6B95",fontFamily:"'Baloo 2',sans-serif",fontSize:15}}>${quickEntries.filter(e=>!e.done).reduce((s,e)=>s+(Number(e.amount)||0),0).toLocaleString()}</span></span>
-              </div>
-            )}
-
-            {/* 卡片牆 */}
-            <div style={{paddingBottom:40}}>
-              {quickEntries.length===0 && (
-                <div style={{textAlign:"center",color:"#8A7A6D",fontWeight:700,padding:"40px 20px",fontSize:15}}>
-                  <span style={{fontSize:44,display:"block",marginBottom:8}}>🗒️</span>
-                  還沒有記錄，快記一筆！
-                </div>
-              )}
-              <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:"16px 14px",marginTop:8}}>
-                {[...quickEntries].sort((a,b)=>{
-                  if(!!a.done!==!!b.done) return a.done?1:-1;
-                  return (b.createdAt||0)-(a.createdAt||0);
-                }).map((entry,idx)=>{
-                  const col=QUICK_COLORS[idx%5];
-                  const rot=hashRotate(entry.id);
-                  return (
-                    <div key={entry.id}
-                      style={{background:col.bg,borderRadius:14,padding:"16px 14px 12px",position:"relative",boxShadow:"0 6px 14px rgba(74,59,50,0.14)",transform:`rotate(${rot}deg)`,opacity:entry.done?0.55:1,display:"flex",flexDirection:"column",minHeight:100}}>
-                      {/* 圖釘 */}
-                      <div style={{position:"absolute",top:-9,left:"50%",transform:"translateX(-50%)",width:16,height:16,borderRadius:"50%",background:`radial-gradient(circle at 35% 30%,#fff,${col.pin} 60%)`,boxShadow:"0 2px 4px rgba(0,0,0,0.25)"}}/>
-
-                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:6}}>
-                        <div style={{fontFamily:"'Baloo 2',sans-serif",fontWeight:700,fontSize:15,lineHeight:1.25,wordBreak:"break-word",textDecoration:entry.done?"line-through":"none",color:"#4A3B32"}}>
-                          {entry.name||"未命名"}
-                        </div>
-                      </div>
-
-                      <div style={{fontFamily:"'Baloo 2',sans-serif",fontWeight:800,fontSize:20,margin:"5px 0 3px",textDecoration:entry.done?"line-through":"none",color:"#4A3B32"}}>
-                        ${Number(entry.amount||0).toLocaleString()}
-                      </div>
-
-                      {entry.note&&(
-                        <div style={{fontSize:12,color:"#8A7A6D",fontWeight:600,lineHeight:1.4,flex:1,wordBreak:"break-word"}}>{entry.note}</div>
-                      )}
-
-                      <div style={{fontSize:11,color:"#8A7A6D",fontWeight:700,marginTop:7,opacity:0.8}}>
-                        {entry.createdAt?fmtQuickTime(entry.createdAt):""}
-                      </div>
-
-                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:8}}>
-                        <label style={{display:"flex",alignItems:"center",gap:4,fontSize:12,fontWeight:800,color:"#8A7A6D",cursor:"pointer",userSelect:"none"}}>
-                          <input type="checkbox" checked={!!entry.done}
-                            onChange={e=>toggleQuickDone(entry.id,e.target.checked)}
-                            style={{width:15,height:15,cursor:"pointer",accentColor:"#4FCBAE"}}/>
-                          已登記
-                        </label>
-                        <button onClick={()=>deleteDoc(doc(db,"quickLedgerEntries",entry.id))}
-                          style={{border:"none",background:"rgba(255,255,255,0.6)",width:26,height:26,borderRadius:"50%",fontSize:13,cursor:"pointer",color:"#8A7A6D",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                          ✕
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          {/* 計算機 */}
-          {quickCalcOpen && (
-            <Calculator
-              initial={quickForm.amount}
-              calcIcon={calcIcon}
-              onConfirm={v=>{ setQuickForm(f=>({...f,amount:String(v)})); setQuickCalcOpen(false); }}
-              onClose={()=>setQuickCalcOpen(false)}
-            />
-          )}
-        </div>
-      )}
     </div>
   );
 }
