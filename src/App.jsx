@@ -636,6 +636,7 @@ function FinanceApp({ user, onLogout }) {
   const [loading,     setLoading]     = useState(true);
   const [loadErr,     setLoadErr]     = useState("");
   const [tab,         setTab]         = useState("home");
+  const [setSub,      setSetSub]      = useState("budget"); // 設定頁內的子功能：budget / recurring / category
   // formState: null | { mode:"add" } | { mode:"edit", record:{...} }
   const [formState,   setFormState]   = useState(null);
   const [filterMonth,  setFilterMonth]  = useState(today().slice(0,7));
@@ -896,7 +897,7 @@ function FinanceApp({ user, onLogout }) {
             </button>
           </div>
           <div style={{display:"flex",borderTop:`1px solid ${T.border}`,overflowX:"auto"}}>
-            {[["home","明細"],["income","月收入"],["credit","信用卡"],["savings","存款"],["budget","預算"],["recurring","固定支出"],["settings","分類"]].map(([k,l])=>(
+            {[["home","明細"],["income","月收入"],["credit","信用卡"],["savings","存款"],["settings","設定"]].map(([k,l])=>(
               <button key={k} onClick={()=>setTab(k)}
                 style={{flex:"0 0 auto",padding:"11px 12px",border:"none",background:"none",cursor:"pointer",fontSize:12,fontWeight:tab===k?700:500,color:tab===k?T.accent:T.muted,borderBottom:tab===k?`2px solid ${T.accent}`:"2px solid transparent",transition:"all 0.15s",fontFamily:"inherit",whiteSpace:"nowrap"}}>
                 {l}
@@ -1585,7 +1586,19 @@ function FinanceApp({ user, onLogout }) {
           })()}
 
           {/* 預算 */}
-          {tab==="budget" && (
+          {tab==="settings" && (
+            <div style={{display:"flex",gap:8,marginBottom:14}}>
+              {[["budget","💰 預算"],["recurring","🔄 固定支出"],["category","🏷️ 分類"]].map(([k,l])=>(
+                <button key={k} onClick={()=>setSetSub(k)}
+                  style={{flex:1,padding:"10px 0",borderRadius:12,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                    border:`1.5px solid ${setSub===k?T.accent:T.border}`,background:setSub===k?T.accent:"#fff",color:setSub===k?"#fff":T.muted}}>
+                  {l}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {tab==="settings" && setSub==="budget" && (
             <>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
                 <div style={{fontSize:13,fontWeight:700,color:T.ink}}>預算設定</div>
@@ -1704,7 +1717,7 @@ function FinanceApp({ user, onLogout }) {
           )}
 
           {/* 固定支出 */}
-          {tab==="recurring" && (
+          {tab==="settings" && setSub==="recurring" && (
             <>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
                 <div>
@@ -1850,7 +1863,7 @@ function FinanceApp({ user, onLogout }) {
 
           {/* 設定 */}
 
-          {tab==="settings" && (
+          {tab==="settings" && setSub==="category" && (
             <SettingsTab categories={categories} onSaveCategories={saveCategories} calcIcon={calcIcon} setCalcIcon={setCalcIcon}/>
           )}
         </div>
