@@ -1,6 +1,19 @@
 import { useState, useEffect, useRef } from "react";
 import * as XLSX from "xlsx";
 import { db } from "./firebase";
+import { getApp } from "firebase/app";
+import {
+  getAuth, onAuthStateChanged, signOut,
+  GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult
+} from "firebase/auth";
+
+// ── 允許登入的 Google 帳號（請改成你們兩人的 Gmail，全部小寫）──
+const ALLOWED_EMAILS = [
+  "okdedonuj@gmail.com",   // 書宇
+  "tobyyang20@gmail.com",  // 晴儀
+].map(e=>e.toLowerCase());
+
+const auth = getAuth(getApp());
 import {
   collection, doc, onSnapshot,
   addDoc, deleteDoc, setDoc, updateDoc
@@ -547,7 +560,75 @@ function CreditCardManager({ creditCards, onSave, accentLight, accent, border, i
   );
 }
 
+// ══════════════════════════════════════════════════════
+// 登入閘門：只有家人的 Google 帳號可以進入
+// ══════════════════════════════════════════════════════
 export default function App() {
+  const [user,  setUser]  = useState(undefined); // undefined = 檢查中、null = 未登入
+  const [error, setError] = useState("");
+  const [busy,  setBusy]  = useState(false);
+
+  useEffect(()=>{
+    // 若之前改用「跳轉登入」，回來時在這裡接收結果
+    getRedirectResult(auth).catch(e=>setError("登入失敗（"+e.code+"）"));
+    return onAuthStateChanged(auth, u=>setUser(u||null));
+  },[]);
+
+  async function login() {
+    setError(""); setBusy(true);
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt:"select_account" });
+    try {
+      await signInWithPopup(auth, provider);
+    } catch(e) {
+      if(e.code==="auth/popup-blocked"||e.code==="auth/operation-not-supported-in-this-environment") {
+        await signInWithRedirect(auth, provider); // 彈出視窗被擋時改用跳轉
+        return;
+      }
+      if(e.code!=="auth/popup-closed-by-user"&&e.code!=="auth/cancelled-popup-request") {
+        setError("登入失敗（"+e.code+"）");
+      }
+    }
+    setBusy(false);
+  }
+
+  const wrap = {minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:T.bg,fontFamily:"'Noto Serif TC','Noto Sans TC',serif",padding:20,boxSizing:"border-box"};
+  const box  = {background:T.card,borderRadius:20,padding:"32px 24px",width:"100%",maxWidth:360,textAlign:"center",boxShadow:"0 2px 12px rgba(0,0,0,0.06)"};
+  const btn  = {width:"100%",padding:14,background:T.accent,color:"#fff",border:"none",borderRadius:14,fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit"};
+
+  if(user===undefined) return <div style={{...wrap,color:T.muted,fontSize:16}}>❤️ 載入中…</div>;
+
+  if(!user) return (
+    <div style={wrap}>
+      <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet"/>
+      <div style={box}>
+        <div style={{fontSize:40,marginBottom:10}}>❤️</div>
+        <div style={{fontSize:18,fontWeight:700,color:T.ink}}>Toby and Yvette</div>
+        <div style={{fontSize:13,color:T.muted,marginBottom:24}}>的理財幫手</div>
+        <button onClick={login} disabled={busy} style={{...btn,opacity:busy?0.6:1}}>
+          {busy?"登入中…":"使用 Google 帳號登入"}
+        </button>
+        <div style={{fontSize:11,color:T.muted,marginTop:12}}>每個裝置只需登入一次</div>
+        {error&&<div style={{fontSize:12,color:T.danger,marginTop:10}}>{error}</div>}
+      </div>
+    </div>
+  );
+
+  if(!ALLOWED_EMAILS.includes((user.email||"").toLowerCase())) return (
+    <div style={wrap}>
+      <div style={box}>
+        <div style={{fontSize:36,marginBottom:10}}>🔒</div>
+        <div style={{fontSize:15,fontWeight:700,color:T.ink,marginBottom:8}}>這個帳號沒有使用權限</div>
+        <div style={{fontSize:12,color:T.muted,marginBottom:20,wordBreak:"break-all"}}>{user.email}</div>
+        <button onClick={()=>signOut(auth)} style={btn}>改用其他帳號</button>
+      </div>
+    </div>
+  );
+
+  return <FinanceApp user={user} onLogout={()=>signOut(auth)}/>;
+}
+
+function FinanceApp({ user, onLogout }) {
   const [records,     setRecords]     = useState([]);
   const [categories,  setCategories]  = useState(DEFAULT_CATEGORIES);
   const [calcIcon,    setCalcIcon]    = useState({emoji:"🧮",img:null});
@@ -780,7 +861,7 @@ export default function App() {
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:T.bg,fontFamily:"'Noto Serif TC',serif",color:T.muted,fontSize:16}}>
       <div style={{textAlign:"center",padding:24,lineHeight:1.8}}>
         ❤️ 載入中…
-        {loadErr && <div style={{marginTop:12,fontSize:13,color:T.danger}}>無法連線到資料庫（{loadErr}）<br/>請檢查 Firebase 的 Firestore「規則」是否過期，或網路是否正常</div>}
+        {loadErr && <div style={{marginTop:12,fontSize:13,color:T.danger}}>無法連線到資料庫（{loadErr}）<br/>請重新登入，或檢查 Firestore 規則</div>}
       </div>
     </div>
   );
@@ -797,10 +878,16 @@ export default function App() {
               <div style={{fontSize:18,fontWeight:700,color:T.ink,letterSpacing:-0.3}}>Toby and Yvette</div>
               <div style={{fontSize:12,color:T.muted,letterSpacing:0.3}}>的理財幫手 ❤️</div>
             </div>
-            <select value={filterMonth} onChange={e=>setFilterMonth(e.target.value)}
-              style={{fontSize:12,color:T.muted,border:`1px solid ${T.border}`,borderRadius:8,padding:"5px 8px",background:T.bg,cursor:"pointer",fontFamily:"inherit"}}>
-              {monthOpts.map(m=><option key={m} value={m}>{m.replace("-","年")}月</option>)}
-            </select>
+            <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}}>
+              <select value={filterMonth} onChange={e=>setFilterMonth(e.target.value)}
+                style={{fontSize:12,color:T.muted,border:`1px solid ${T.border}`,borderRadius:8,padding:"5px 8px",background:T.bg,cursor:"pointer",fontFamily:"inherit"}}>
+                {monthOpts.map(m=><option key={m} value={m}>{m.replace("-","年")}月</option>)}
+              </select>
+              <button onClick={()=>{ if(window.confirm("確定要登出嗎？")) onLogout(); }} title={user?.email||""}
+                style={{fontSize:11,color:T.muted,background:"none",border:"none",padding:0,cursor:"pointer",fontFamily:"inherit",textDecoration:"underline"}}>
+                登出
+              </button>
+            </div>
           </div>
           <div style={{display:"flex",gap:7,marginBottom:14}}>
             <button onClick={()=>setFormState({mode:"add"})}
