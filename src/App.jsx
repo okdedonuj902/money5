@@ -1742,22 +1742,27 @@ function FinanceApp({ user, onLogout }) {
           {tab==="settings" && setSub==="reminder" && (
             <div style={{...cardSt}}>
               <div style={{fontSize:14,fontWeight:700,color:T.ink,marginBottom:4}}>📧 每月提醒信</div>
-              <div style={{fontSize:12,color:T.muted,marginBottom:14,lineHeight:1.7}}>每月固定日期，自動寄一封信到書宇和晴儀的信箱，提醒輸入存款、信用卡帳單和收入。</div>
+              <div style={{fontSize:12,color:T.muted,marginBottom:14,lineHeight:1.7}}>到了設定的日期，系統會自動寄信到書宇和晴儀的信箱，提醒輸入資料。</div>
               <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.ink,marginBottom:14,cursor:"pointer"}}>
-                <input type="checkbox" checked={rem.enabled} onChange={e=>setRem(r=>({...r,enabled:e.target.checked}))}/> 開啟每月提醒
+                <input type="checkbox" checked={rem.enabled} onChange={e=>setRem(r=>({...r,enabled:e.target.checked}))}/> 開啟寄出提醒信件
               </label>
-              <div style={{fontSize:12,color:T.muted,marginBottom:6}}>📥 收入、💳 信用卡帳單：每月幾號寄出（早上 9 點左右）</div>
-              <select value={rem.billsDay} onChange={e=>setRem(r=>({...r,billsDay:+e.target.value}))}
-                style={{width:"100%",padding:"10px",borderRadius:10,border:`1px solid ${T.border}`,background:T.bg,fontSize:14,fontFamily:"inherit",marginBottom:14}}>
-                {Array.from({length:31},(_,i)=>i+1).map(d=><option key={d} value={d}>每月 {d} 號</option>)}
-              </select>
-              <div style={{fontSize:12,color:T.muted,marginBottom:6}}>🏦 存款：每月幾號寄出（早上 9 點左右）</div>
-              <select value={rem.savingsDay} onChange={e=>setRem(r=>({...r,savingsDay:+e.target.value}))}
-                style={{width:"100%",padding:"10px",borderRadius:10,border:`1px solid ${T.border}`,background:T.bg,fontSize:14,fontFamily:"inherit",marginBottom:6}}>
-                <option value={0}>每月最後一天</option>
-                {Array.from({length:31},(_,i)=>i+1).map(d=><option key={d} value={d}>每月 {d} 號</option>)}
-              </select>
-              <div style={{fontSize:11,color:T.muted}}>若當月沒有該日（例如 31 號），會在當月最後一天寄出</div>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:T.muted,padding:"0 2px 6px",borderBottom:`1px solid ${T.border}`}}>
+                <span>提醒項目</span><span>寄出日期</span>
+              </div>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 2px",borderBottom:`1px solid ${T.border}`}}>
+                <span style={{fontSize:14,color:T.ink,fontWeight:600}}>💰 收入（含信用卡帳單）</span>
+                <select value={rem.billsDay} onChange={e=>setRem(r=>({...r,billsDay:+e.target.value}))} style={{padding:"9px 8px",borderRadius:10,border:`1px solid ${T.border}`,background:T.bg,fontSize:13,fontFamily:"inherit",color:T.ink}}>
+                  {Array.from({length:31},(_,i)=>i+1).map(d=><option key={d} value={d}>每月 {d} 號</option>)}
+                </select>
+              </div>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 2px"}}>
+                <span style={{fontSize:14,color:T.ink,fontWeight:600}}>🏦 存款</span>
+                <select value={rem.savingsDay} onChange={e=>setRem(r=>({...r,savingsDay:+e.target.value}))} style={{padding:"9px 8px",borderRadius:10,border:`1px solid ${T.border}`,background:T.bg,fontSize:13,fontFamily:"inherit",color:T.ink}}>
+                  <option value={0}>每月最後一天</option>
+                  {Array.from({length:31},(_,i)=>i+1).map(d=><option key={d} value={d}>每月 {d} 號</option>)}
+                </select>
+              </div>
+              <div style={{fontSize:11,color:T.muted,marginTop:2}}>若當月沒有該日（例如 31 號），會在當月最後一天寄出</div>
               <div style={{display:"flex",gap:8,marginTop:14}}>
                 <button onClick={saveReminder} disabled={remBusy}
                   style={{flex:1,padding:"11px 0",background:T.accent,color:"#fff",border:"none",borderRadius:12,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",opacity:remBusy?0.6:1}}>儲存設定</button>
