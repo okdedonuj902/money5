@@ -636,7 +636,29 @@ function FinanceApp({ user, onLogout }) {
   const [loading,     setLoading]     = useState(true);
   const [loadErr,     setLoadErr]     = useState("");
   const [tab,         setTab]         = useState("home");
-  const [setSub,      setSetSub]      = useState("budget"); // 設定頁內的子功能：budget / recurring / category
+  const [setSub,      setSetSub]      = useState("budget"); // 設定頁內的子功能：budget / recurring / category / reminder
+  // ── 每月提醒信設定 ──
+  const [rem,        setRem]        = useState({enabled:false,day:25,items:{savings:true,credit:true,income:true}});
+  const [remLastSent,setRemLastSent]= useState("");
+  const [remMsg,     setRemMsg]     = useState("");
+  const [remBusy,    setRemBusy]    = useState(false);
+  useEffect(()=>{ const u=onSnapshot(doc(db,"settings","reminder"),snap=>{ if(snap.exists()){ const d=snap.data(); setRem(r=>({enabled:!!d.enabled,day:d.day||25,items:{...r.items,...(d.items||{})}})); setRemLastSent(d.lastSent||""); } },()=>{}); return u; },[]);
+  async function saveReminder(){
+    setRemBusy(true); setRemMsg("");
+    try{ await setDoc(doc(db,"settings","reminder"),{enabled:rem.enabled,day:+rem.day,items:rem.items},{merge:true}); setRemMsg("✅ 已儲存"); }
+    catch(e){ setRemMsg("儲存失敗（"+(e.code||"error")+"）"); }
+    setRemBusy(false);
+  }
+  async function sendTestMail(){
+    setRemBusy(true); setRemMsg("寄送中…");
+    try{
+      const token=await user.getIdToken();
+      const r=await fetch("/api/send-reminder?test=1",{headers:{Authorization:"Bearer "+token}});
+      const j=await r.json().catch(()=>({}));
+      setRemMsg(r.ok?"✅ 測試信已寄出，請到信箱查看（可能在垃圾信件匣）":"寄送失敗："+(j.error||r.status));
+    }catch(e){ setRemMsg("寄送失敗："+e.message); }
+    setRemBusy(false);
+  }
   // formState: null | { mode:"add" } | { mode:"edit", record:{...} }
   const [formState,   setFormState]   = useState(null);
   const [filterMonth,  setFilterMonth]  = useState(today().slice(0,7));
@@ -1588,9 +1610,9 @@ function FinanceApp({ user, onLogout }) {
           {/* 預算 */}
           {tab==="settings" && (
             <div style={{display:"flex",gap:8,marginBottom:14}}>
-              {[["budget","💰 預算"],["recurring","🔄 固定支出"],["category","🏷️ 分類"]].map(([k,l])=>(
+              {[["budget","💰 預算"],["recurring","🔄 固定支出"],["category","🏷️ 分類"],["reminder","📧 提醒"]].map(([k,l])=>(
                 <button key={k} onClick={()=>setSetSub(k)}
-                  style={{flex:1,padding:"10px 0",borderRadius:12,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                  style={{flex:1,padding:"10px 0",borderRadius:12,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap",
                     border:`1.5px solid ${setSub===k?T.accent:T.border}`,background:setSub===k?T.accent:"#fff",color:setSub===k?"#fff":T.muted}}>
                   {l}
                 </button>
@@ -1717,6 +1739,36 @@ function FinanceApp({ user, onLogout }) {
           )}
 
           {/* 固定支出 */}
+          {tab==="settings" && setSub==="reminder" && (
+            <div style={{...cardSt}}>
+              <div style={{fontSize:14,fontWeight:700,color:T.ink,marginBottom:4}}>📧 每月提醒信</div>
+              <div style={{fontSize:12,color:T.muted,marginBottom:14,lineHeight:1.7}}>每月固定日期，自動寄一封信到書宇和晴儀的信箱，提醒輸入存款、信用卡帳單和收入。</div>
+              <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.ink,marginBottom:14,cursor:"pointer"}}>
+                <input type="checkbox" checked={rem.enabled} onChange={e=>setRem(r=>({...r,enabled:e.target.checked}))}/> 開啟每月提醒
+              </label>
+              <div style={{fontSize:12,color:T.muted,marginBottom:6}}>每月幾號寄出（早上 9 點左右）</div>
+              <select value={rem.day} onChange={e=>setRem(r=>({...r,day:+e.target.value}))}
+                style={{width:"100%",padding:"10px",borderRadius:10,border:`1px solid ${T.border}`,background:T.bg,fontSize:14,fontFamily:"inherit",marginBottom:6}}>
+                {Array.from({length:31},(_,i)=>i+1).map(d=><option key={d} value={d}>每月 {d} 號</option>)}
+              </select>
+              <div style={{fontSize:11,color:T.muted,marginBottom:14}}>若當月沒有該日（例如 31 號），會在當月最後一天寄出</div>
+              <div style={{fontSize:12,color:T.muted,marginBottom:6}}>信件要提醒哪些項目</div>
+              {[["savings","存款"],["credit","信用卡帳單"],["income","收入"]].map(([k,l])=>(
+                <label key={k} style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.ink,marginBottom:8,cursor:"pointer"}}>
+                  <input type="checkbox" checked={!!rem.items[k]} onChange={e=>setRem(r=>({...r,items:{...r.items,[k]:e.target.checked}}))}/> {l}
+                </label>
+              ))}
+              <div style={{display:"flex",gap:8,marginTop:14}}>
+                <button onClick={saveReminder} disabled={remBusy}
+                  style={{flex:1,padding:"11px 0",background:T.accent,color:"#fff",border:"none",borderRadius:12,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",opacity:remBusy?0.6:1}}>儲存設定</button>
+                <button onClick={sendTestMail} disabled={remBusy}
+                  style={{flex:1,padding:"11px 0",background:"#fff",color:T.accent,border:`1.5px solid ${T.accent}`,borderRadius:12,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",opacity:remBusy?0.6:1}}>寄測試信</button>
+              </div>
+              {remMsg && <div style={{fontSize:12,color:T.muted,marginTop:10}}>{remMsg}</div>}
+              {remLastSent && <div style={{fontSize:11,color:T.muted,marginTop:6}}>上次自動寄出：{remLastSent}</div>}
+            </div>
+          )}
+
           {tab==="settings" && setSub==="recurring" && (
             <>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
