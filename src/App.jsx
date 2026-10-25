@@ -553,6 +553,7 @@ export default function App() {
   const [calcIcon,    setCalcIcon]    = useState({emoji:"🧮",img:null});
   const [footerImg,   setFooterImg]   = useState(null);
   const [loading,     setLoading]     = useState(true);
+  const [loadErr,     setLoadErr]     = useState("");
   const [tab,         setTab]         = useState("home");
   // formState: null | { mode:"add" } | { mode:"edit", record:{...} }
   const [formState,   setFormState]   = useState(null);
@@ -564,7 +565,7 @@ export default function App() {
   const [exportMode,   setExportMode]   = useState("all");
   const payMap = Object.fromEntries(PAYMENT_METHODS.map(p=>[p.id,p]));
 
-  useEffect(()=>{ const u=onSnapshot(collection(db,"records"),snap=>{ setRecords(snap.docs.map(d=>({id:d.id,...d.data()}))); setLoading(false); }); return u; },[]);
+  useEffect(()=>{ const u=onSnapshot(collection(db,"records"),snap=>{ setRecords(snap.docs.map(d=>({id:d.id,...d.data()}))); setLoading(false); },err=>{ console.error(err); setLoadErr((err&&err.code)||"error"); }); return u; },[]);
   useEffect(()=>{ const u=onSnapshot(doc(db,"settings","categories"),snap=>{ if(snap.exists()&&snap.data().list?.length>0) setCategories(snap.data().list); }); return u; },[]);
   useEffect(()=>{ const u=onSnapshot(doc(db,"settings","calcIcon"),snap=>{ if(snap.exists()) setCalcIcon(snap.data()); }); return u; },[]);
   useEffect(()=>{ const u=onSnapshot(doc(db,"settings","footerImg"),snap=>{ if(snap.exists()) setFooterImg(snap.data().url||null); }); return u; },[]);
@@ -777,7 +778,10 @@ export default function App() {
 
   if(loading) return (
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:T.bg,fontFamily:"'Noto Serif TC',serif",color:T.muted,fontSize:16}}>
-      ❤️ 載入中…
+      <div style={{textAlign:"center",padding:24,lineHeight:1.8}}>
+        ❤️ 載入中…
+        {loadErr && <div style={{marginTop:12,fontSize:13,color:T.danger}}>無法連線到資料庫（{loadErr}）<br/>請檢查 Firebase 的 Firestore「規則」是否過期，或網路是否正常</div>}
+      </div>
     </div>
   );
 
