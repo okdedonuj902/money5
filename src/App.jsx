@@ -682,7 +682,9 @@ function FinanceApp({ user, onLogout }) {
   const [showSavingsForm, setShowSavingsForm] = useState(false);
   const [creditForm,  setCreditForm]  = useState({dueDate:"",card:"",amount:"",note:""});
   const [editCreditId, setEditCreditId] = useState(null); // 編輯中的帳單 id
-  const [savingsForm, setSavingsForm] = useState({date:today(),bank:"",balance:"",currency:"TWD"});
+  const [savingsForm, setSavingsForm] = useState({date:today(),month:today().slice(0,7),bank:"",balance:"",currency:"TWD"});
+  const [savingsHistory, setSavingsHistory] = useState([]); // 每月存款餘額紀錄
+  const [savingsMonth, setSavingsMonth] = useState(today().slice(0,7)); // 目前查看的月份
   const [editSavingsId, setEditSavingsId] = useState(null); // 編輯中的存款 id
   const [savingsTab,   setSavingsTab]   = useState("TWD"); // "TWD" | "USD"
   const [usdRate,      setUsdRate]      = useState(null);  // USD→TWD 匯率
@@ -692,6 +694,7 @@ function FinanceApp({ user, onLogout }) {
   const [creditFilterMonth, setCreditFilterMonth] = useState(today().slice(0,7));
 
   useEffect(()=>{ const u=onSnapshot(collection(db,"creditBills"),snap=>{ setCreditBills(snap.docs.map(d=>({id:d.id,...d.data()}))); }); return u; },[]);
+  useEffect(()=>{ const u=onSnapshot(collection(db,"savingsHistory"),snap=>{ setSavingsHistory(snap.docs.map(d=>({id:d.id,...d.data()}))); }); return u; },[]);
   useEffect(()=>{ const u=onSnapshot(collection(db,"savingsRecs"),snap=>{ setSavingsRecs(snap.docs.map(d=>({id:d.id,...d.data()}))); }); return u; },[]);
 
   // creditCards managed via state
@@ -727,18 +730,75 @@ function FinanceApp({ user, onLogout }) {
     setCreditForm({dueDate:"",card:"",amount:"",note:""});
     setShowCreditForm(false);
   }
+  // 存款：每月一筆紀錄存在 savingsHistory（id＝月份_幣別_帳戶）；
+  // savingsRecs 仍保留「各帳戶最新一筆」，讓其他網站（報表）照常讀取。
+  const recMonth = r => (r.month || r.date || r.updatedAt || "").slice(0,7);
+  async function fixSavingsMirror(currency, bank, cands) {
+    const key = `${currency}_${bank}`;
+    const list = cands.filter(h=>h.currency===currency && h.bank===bank).sort((a,b)=>b.month.localeCompare(a.month));
+    if(list.length===0){ await deleteDoc(doc(db,"savingsRecs",key)); return; }
+    const l = list[0];
+    await setDoc(doc(db,"savingsRecs",key),{date:l.date||today(),month:l.month,bank,currency,balance:l.balance,updatedAt:l.updatedAt||today()});
+  }
   async function addSavingsRec() {
-    if(!savingsForm.date||!savingsForm.bank||!savingsForm.balance||isNaN(savingsForm.balance)||toMoney(savingsForm.balance)<0) return;
+    if(!savingsForm.month||!savingsForm.bank||!savingsForm.balance||isNaN(savingsForm.balance)||toMoney(savingsForm.balance)<0) return;
     const currency = savingsForm.currency||"TWD";
-    const docId    = `${currency}_${savingsForm.bank}`; // 同貨幣同銀行只保留一筆
-    if(editSavingsId && editSavingsId !== docId) {
-      // 若銀行或貨幣改變，先刪舊的
-      await deleteDoc(doc(db,"savingsRecs",editSavingsId));
+    const bank     = savingsForm.bank;
+    const month    = savingsForm.month;
+    const key      = `${currency}_${bank}`;
+    const histId   = `${month}_${key}`;
+    const rec = {id:histId,month,bank,currency,balance:toMoney(savingsForm.balance),date:today(),updatedAt:today()};
+    const excl = [];
+    let cands = savingsHistory.filter(h=>h.id!==histId);
+    // 1. 舊資料（只存在 savingsRecs 的最新一筆）先備份成該月的紀錄，避免被覆蓋
+    const mirror = savingsRecs.find(r=>r.id===key);
+    if(mirror){
+      const mm = recMonth(mirror);
+      if(mm && mm!==month && !savingsHistory.some(h=>h.id===`${mm}_${key}`)){
+        const old = {id:`${mm}_${key}`,month:mm,bank:mirror.bank,currency:mirror.currency||"TWD",balance:mirror.balance,date:mirror.date||`${mm}-01`,updatedAt:mirror.updatedAt||today()};
+        const {id:_i,...oldData} = old;
+        await setDoc(doc(db,"savingsHistory",old.id),oldData);
+        cands.push(old);
+      }
     }
-    await setDoc(doc(db,"savingsRecs",docId),{...savingsForm,currency,balance:toMoney(savingsForm.balance),updatedAt:today()});
-    setSavingsForm({date:today(),bank:"",balance:"",currency:"TWD"});
+    // 2. 寫入這個月的紀錄
+    const {id:_id,...recData} = rec;
+    await setDoc(doc(db,"savingsHistory",histId),recData);
+    cands.push(rec);
+    // 3. 若是編輯且月份／帳戶有變，刪掉舊的
+    let oldAccount = null;
+    if(editSavingsId){
+      if(editSavingsId.startsWith("legacy:")){
+        const lk = editSavingsId.slice(7);
+        if(lk!==key){ await deleteDoc(doc(db,"savingsRecs",lk)); oldAccount = savingsRecs.find(r=>r.id===lk); }
+      } else if(editSavingsId!==histId){
+        const o = savingsHistory.find(h=>h.id===editSavingsId);
+        await deleteDoc(doc(db,"savingsHistory",editSavingsId));
+        cands = cands.filter(h=>h.id!==editSavingsId);
+        if(o) oldAccount = o;
+      }
+    }
+    // 4. 更新「最新」那份
+    await fixSavingsMirror(currency, bank, cands);
+    if(oldAccount && `${oldAccount.currency||"TWD"}_${oldAccount.bank}`!==key){
+      await fixSavingsMirror(oldAccount.currency||"TWD", oldAccount.bank, cands);
+    } else if(oldAccount){
+      await fixSavingsMirror(currency, bank, cands);
+    }
+    setSavingsForm({date:today(),month:savingsMonth,bank:"",balance:"",currency:"TWD"});
     setEditSavingsId(null);
     setShowSavingsForm(false);
+  }
+  async function deleteSavingsItem(r) {
+    const currency = r.currency||"TWD";
+    if(r.id.startsWith("legacy:")){
+      await deleteDoc(doc(db,"savingsRecs",r.id.slice(7)));
+      const rest = savingsHistory.filter(h=>h.id!==r.id);
+      await fixSavingsMirror(currency, r.bank, rest);
+    } else {
+      await deleteDoc(doc(db,"savingsHistory",r.id));
+      await fixSavingsMirror(currency, r.bank, savingsHistory.filter(h=>h.id!==r.id));
+    }
   }
 
   // ── 預算 ──
@@ -1428,8 +1488,15 @@ function FinanceApp({ user, onLogout }) {
           {/* 存款 */}
           {tab==="savings" && (()=>{
             const USD_BANKS_PRESET = ["晴儀將來","晴儀台新"]; // 其他 = 自行輸入
-            const twdRecs = savingsRecs.filter(r=>(r.currency||"TWD")==="TWD").sort((a,b)=>a.bank.localeCompare(b.bank));
-            const usdRecs = savingsRecs.filter(r=>r.currency==="USD").sort((a,b)=>a.bank.localeCompare(b.bank));
+            // 目前選的月份：該月份的紀錄 ＋ 舊資料（只有「最新一筆」、尚未建立該月紀錄的）
+            const monthHist = savingsHistory.filter(h=>h.month===savingsMonth);
+            const legacyRecs = savingsRecs
+              .filter(r=>recMonth(r)===savingsMonth && !monthHist.some(h=>h.bank===r.bank&&(h.currency||"TWD")===(r.currency||"TWD")))
+              .map(r=>({...r,id:`legacy:${r.id}`,month:savingsMonth}));
+            const monthRecs = [...monthHist,...legacyRecs];
+            const savingsMonthOpts = [...new Set([today().slice(0,7),savingsMonth,...savingsHistory.map(h=>h.month),...savingsRecs.map(recMonth)].filter(Boolean))].sort((a,b)=>b.localeCompare(a));
+            const twdRecs = monthRecs.filter(r=>(r.currency||"TWD")==="TWD").sort((a,b)=>a.bank.localeCompare(b.bank));
+            const usdRecs = monthRecs.filter(r=>r.currency==="USD").sort((a,b)=>a.bank.localeCompare(b.bank));
             const twdTotal = twdRecs.reduce((s,r)=>s+r.balance,0);
             const usdTotal = usdRecs.reduce((s,r)=>s+r.balance,0);
             const currentRecs = savingsTab==="TWD" ? twdRecs : usdRecs;
@@ -1438,6 +1505,15 @@ function FinanceApp({ user, onLogout }) {
             const currentBanks = savingsTab==="TWD" ? SAVINGS_BANKS : USD_BANKS_PRESET;
             return (
             <>
+              {/* 月份選擇 */}
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+                <span style={{fontSize:12,color:T.muted,flexShrink:0}}>查看月份</span>
+                <select value={savingsMonth} onChange={e=>{ setSavingsMonth(e.target.value); setShowSavingsForm(false); setEditSavingsId(null); }}
+                  style={{flex:1,padding:"9px 10px",borderRadius:10,border:`1.5px solid ${T.border}`,background:"#fff",fontSize:14,fontWeight:700,color:T.ink,fontFamily:"inherit"}}>
+                  {savingsMonthOpts.map(m=><option key={m} value={m}>{m.replace("-","年")}月</option>)}
+                </select>
+              </div>
+
               {/* 幣別切換 + 新增按鈕 */}
               <div style={{display:"flex",gap:8,marginBottom:14,alignItems:"center"}}>
                 <div style={{display:"flex",flex:1,gap:0,borderRadius:10,overflow:"hidden",border:`1.5px solid ${T.border}`}}>
@@ -1448,9 +1524,9 @@ function FinanceApp({ user, onLogout }) {
                     </button>
                   ))}
                 </div>
-                <button onClick={()=>{ setShowSavingsForm(v=>!v); setEditSavingsId(null); setSavingsForm({date:today(),bank:"",balance:"",currency:savingsTab}); }}
+                <button onClick={()=>{ setShowSavingsForm(v=>!v); setEditSavingsId(null); setSavingsForm({date:today(),month:savingsMonth,bank:"",balance:"",currency:savingsTab}); }}
                   style={{flexShrink:0,padding:"9px 14px",background:showSavingsForm?T.accent:"none",color:showSavingsForm?"#fff":T.accent,border:`1.5px solid ${T.accent}`,borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                  {showSavingsForm?"✕":"＋ 更新"}
+                  {showSavingsForm?"✕":"＋ 輸入餘額"}
                 </button>
               </div>
 
@@ -1461,11 +1537,11 @@ function FinanceApp({ user, onLogout }) {
                     {editSavingsId?"✏️ 編輯餘額":"新增帳戶餘額"} — {savingsTab==="TWD"?"🇹🇼 台幣":"🇺🇸 美金"}
                   </div>
                   <div style={{fontSize:11,color:T.muted,marginBottom:10,background:"#fff",borderRadius:9,padding:"7px 10px"}}>
-                    💡 同一個銀行只保留最新一筆
+                    💡 每個月、每個帳戶記一筆餘額；同月份再存一次會覆蓋，也可以補填過去的月份
                   </div>
                   <div style={{marginBottom:9}}>
-                    <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:4}}>填寫日期 *</div>
-                    <input type="date" value={savingsForm.date} onChange={e=>setSavingsForm(f=>({...f,date:e.target.value}))}
+                    <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:4}}>記錄月份 *</div>
+                    <input type="month" value={savingsForm.month} onChange={e=>setSavingsForm(f=>({...f,month:e.target.value}))}
                       style={{width:"100%",padding:"9px 12px",borderRadius:10,border:`1.5px solid ${T.border}`,fontSize:13,color:T.ink,background:"#fff",outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
                   </div>
                   <div style={{marginBottom:9}}>
@@ -1559,7 +1635,7 @@ function FinanceApp({ user, onLogout }) {
               {currentRecs.length===0 ? (
                 <div style={{textAlign:"center",color:T.muted,padding:"36px 0",fontSize:14}}>
                   <div style={{fontSize:28,marginBottom:8}}>{savingsTab==="TWD"?"🏦":"💵"}</div>
-                  尚未輸入{savingsTab==="TWD"?"台幣":"美金"}帳戶餘額
+                  {savingsMonth.replace("-","年")}月尚未輸入{savingsTab==="TWD"?"台幣":"美金"}帳戶餘額
                 </div>
               ) : (
                 <div style={{background:T.card,borderRadius:14,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,0.04)"}}>
@@ -1576,7 +1652,7 @@ function FinanceApp({ user, onLogout }) {
                     <div key={r.id} style={{display:"grid",gridTemplateColumns:savingsTab==="USD"?"1fr 72px 72px 28px 24px":"1fr 90px 28px 24px",gap:0,padding:"10px 12px",borderBottom:i<currentRecs.length-1?`1px solid ${T.border}`:"none",alignItems:"center"}}>
                       <div style={{minWidth:0}}>
                         <div style={{fontSize:13,fontWeight:600,color:T.ink}}>{r.bank}</div>
-                        <div style={{fontSize:10,color:T.muted,marginTop:1}}>{r.date||r.updatedAt}</div>
+                        <div style={{fontSize:10,color:T.muted,marginTop:1}}>輸入於 {r.updatedAt||r.date}</div>
                       </div>
                       <div style={{fontSize:13,fontWeight:700,color:T.accent,textAlign:"right"}}>
                         {savingsTab==="TWD"?fmt(r.balance):`$${r.balance.toLocaleString()}`}
@@ -1588,14 +1664,14 @@ function FinanceApp({ user, onLogout }) {
                       )}
                       {/* 編輯小按鈕 */}
                       <button onClick={()=>{
-                        setSavingsForm({date:r.date||today(),bank:r.bank,balance:String(r.balance),currency:r.currency||"TWD"});
+                        setSavingsForm({date:today(),month:savingsMonth,bank:r.bank,balance:String(r.balance),currency:r.currency||"TWD"});
                         setEditSavingsId(r.id);
                         setShowSavingsForm(true);
                       }} style={{padding:"3px 6px",background:T.accentLight,color:T.accent,border:`1px solid ${T.accent}44`,borderRadius:6,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
                         ✏️
                       </button>
                       {/* 刪除叉叉 */}
-                      <button onClick={()=>deleteDoc(doc(db,"savingsRecs",r.id))}
+                      <button onClick={()=>deleteSavingsItem(r)}
                         style={{width:22,height:22,background:"none",color:T.muted,border:`1px solid ${T.border}`,borderRadius:5,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",padding:0,flexShrink:0}}>
                         ✕
                       </button>
