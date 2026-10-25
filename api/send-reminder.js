@@ -14,10 +14,8 @@ function getAdmin() {
   return admin;
 }
 
-async function sendMail(cfg) {
+async function sendMail(items, subject) {
   const to = (process.env.REMINDER_TO || ALLOWED.join(",")).split(",").map(s => s.trim()).filter(Boolean);
-  const labels = { savings: "存款", credit: "信用卡帳單", income: "收入" };
-  const items = Object.keys(labels).filter(k => cfg.items?.[k] !== false).map(k => labels[k]);
   const appUrl = process.env.APP_URL || "";
   const list = items.map(i => `<li style="margin:6px 0">${i}</li>`).join("");
   const transporter = nodemailer.createTransport({
@@ -27,7 +25,7 @@ async function sendMail(cfg) {
   await transporter.sendMail({
     from: `"Toby and Yvette 的理財幫手" <${process.env.GMAIL_USER}>`,
     to: to.join(","),
-    subject: "❤️ 理財幫手提醒：這個月記得輸入資料囉",
+    subject,
     html: `<div style="font-family:sans-serif;color:#4A4035;line-height:1.7">
       <p>嗨～這個月記得到理財幫手輸入：</p>
       <ul>${list}</ul>
@@ -35,6 +33,14 @@ async function sendMail(cfg) {
       <p style="color:#9A9080;font-size:12px">這是系統每月自動寄出的提醒信。</p></div>`,
   });
 }
+
+// 兩種提醒：收入＋信用卡帳單（預設每月 5 號）、存款（預設每月最後一天，day=0 代表月底）
+const RULES = [
+  { key: "bills", dayField: "billsDay", defDay: 5, sentField: "lastSentBills",
+    items: ["收入", "信用卡帳單"], subject: "❤️ 理財幫手提醒：請輸入本月收入與信用卡帳單" },
+  { key: "savings", dayField: "savingsDay", defDay: 0, sentField: "lastSentSavings",
+    items: ["存款"], subject: "❤️ 理財幫手提醒：請輸入本月存款" },
+];
 
 module.exports = async (req, res) => {
   try {
@@ -49,7 +55,7 @@ module.exports = async (req, res) => {
       if (!m) return res.status(401).json({ error: "未登入" });
       const dec = await fb.auth().verifyIdToken(m[1]);
       if (!ALLOWED.includes((dec.email || "").toLowerCase())) return res.status(403).json({ error: "沒有權限" });
-      await sendMail(cfg);
+      await sendMail(["收入", "信用卡帳單", "存款"], "❤️ 理財幫手提醒（測試信）");
       return res.status(200).json({ ok: true });
     }
 
@@ -62,14 +68,18 @@ module.exports = async (req, res) => {
     const tw = new Date(Date.now() + 8 * 3600 * 1000); // 台灣時間
     const y = tw.getUTCFullYear(), mo = tw.getUTCMonth(), d = tw.getUTCDate();
     const lastDay = new Date(Date.UTC(y, mo + 1, 0)).getUTCDate();
-    const target = Math.min(cfg.day || 25, lastDay);
     const ym = `${y}-${String(mo + 1).padStart(2, "0")}`;
-    if (d !== target) return res.status(200).json({ skipped: "not today", today: d, target });
-    if (cfg.lastSent === ym) return res.status(200).json({ skipped: "already sent" });
-
-    await sendMail(cfg);
-    await ref.set({ lastSent: ym }, { merge: true });
-    return res.status(200).json({ ok: true, sent: ym });
+    const sent = [], skipped = [];
+    for (const r of RULES) {
+      const day = cfg[r.dayField] ?? r.defDay;
+      const target = day === 0 ? lastDay : Math.min(day, lastDay);
+      if (d !== target) { skipped.push(`${r.key}: not today`); continue; }
+      if (cfg[r.sentField] === ym) { skipped.push(`${r.key}: already sent`); continue; }
+      await sendMail(r.items, r.subject);
+      await ref.set({ [r.sentField]: ym }, { merge: true });
+      sent.push(r.key);
+    }
+    return res.status(200).json({ ok: true, sent, skipped });
   } catch (e) {
     console.error(e);
     return res.status(500).json({ error: e.message });
