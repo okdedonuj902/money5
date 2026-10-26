@@ -639,16 +639,43 @@ function FinanceApp({ user, onLogout }) {
   const [tab,         setTab]         = useState("home");
   const [setSub,      setSetSub]      = useState("budget"); // 設定頁內的子功能：budget / recurring / category / reminder
   // ── 每月提醒信設定 ──
-  const [rem,        setRem]        = useState({enabled:false,billsDay:5,savingsDay:0});
-  const [remLastSent,setRemLastSent]= useState({bills:"",savings:""});
+  const DEFAULT_REM_ITEMS = [{id:"income",name:"收入與信用卡帳單",day:5},{id:"savings",name:"存款",day:0}];
+  const [remEnabled, setRemEnabled] = useState(false);
+  const [remItems,   setRemItems]   = useState(DEFAULT_REM_ITEMS);
+  const [remSent,    setRemSent]    = useState({});
+  const [remEdit,    setRemEdit]    = useState(null);      // null | "new" | 項目 id
+  const [remDraft,   setRemDraft]   = useState({name:"",day:5});
   const [remMsg,     setRemMsg]     = useState("");
   const [remBusy,    setRemBusy]    = useState(false);
-  useEffect(()=>{ const u=onSnapshot(doc(db,"settings","reminder"),snap=>{ if(snap.exists()){ const d=snap.data(); setRem({enabled:!!d.enabled,billsDay:d.billsDay??5,savingsDay:d.savingsDay??0}); setRemLastSent({bills:d.lastSentBills||"",savings:d.lastSentSavings||""}); } },()=>{}); return u; },[]);
-  async function saveReminder(){
+  useEffect(()=>{ const u=onSnapshot(doc(db,"settings","reminder"),snap=>{
+    if(!snap.exists()) return;
+    const d=snap.data();
+    setRemEnabled(!!d.enabled);
+    setRemItems(Array.isArray(d.items) ? d.items : [{id:"income",name:"收入與信用卡帳單",day:d.billsDay??5},{id:"savings",name:"存款",day:d.savingsDay??0}]);
+    setRemSent({...(d.sent||{}), ...(d.lastSentBills?{income:d.lastSentBills}:{}), ...(d.lastSentSavings?{savings:d.lastSentSavings}:{})});
+  },()=>{}); return u; },[]);
+  async function saveReminder(enabled, items){
     setRemBusy(true); setRemMsg("");
-    try{ await setDoc(doc(db,"settings","reminder"),{enabled:rem.enabled,billsDay:+rem.billsDay,savingsDay:+rem.savingsDay},{merge:true}); setRemMsg("✅ 已儲存"); }
+    try{ await setDoc(doc(db,"settings","reminder"),{enabled,items},{merge:true}); setRemMsg("✅ 已儲存"); }
     catch(e){ setRemMsg("儲存失敗（"+(e.code||"error")+"）"); }
     setRemBusy(false);
+  }
+  function remDayLabel(d){ return d===0?"每月最後一天":`每月 ${d} 號`; }
+  function startRemEdit(item){ setRemEdit(item?item.id:"new"); setRemDraft(item?{name:item.name,day:item.day}:{name:"",day:5}); }
+  async function commitRemEdit(){
+    const name=remDraft.name.trim(); if(!name) return;
+    const day=+remDraft.day;
+    const next = remEdit==="new"
+      ? [...remItems,{id:"r"+Date.now(),name,day}]
+      : remItems.map(i=>i.id===remEdit?{...i,name,day}:i);
+    setRemItems(next); setRemEdit(null);
+    await saveReminder(remEnabled,next);
+  }
+  async function deleteRemItem(id){
+    if(!window.confirm("確定要刪除這個提醒項目嗎？")) return;
+    const next=remItems.filter(i=>i.id!==id);
+    setRemItems(next);
+    await saveReminder(remEnabled,next);
   }
   async function sendTestMail(){
     setRemBusy(true); setRemMsg("寄送中…");
@@ -1826,35 +1853,61 @@ function FinanceApp({ user, onLogout }) {
           {tab==="settings" && setSub==="reminder" && (
             <div style={{...cardSt}}>
               <div style={{fontSize:14,fontWeight:700,color:T.ink,marginBottom:4}}>📧 每月提醒信</div>
-              <div style={{fontSize:12,color:T.muted,marginBottom:14,lineHeight:1.7}}>到了設定的日期，系統會自動寄信到書宇和晴儀的信箱，提醒輸入資料。</div>
+              <div style={{fontSize:12,color:T.muted,marginBottom:14,lineHeight:1.7}}>到了設定的日期，系統會自動寄信到書宇和晴儀的信箱，提醒輸入資料。同一天的項目會合併成一封信。</div>
               <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.ink,marginBottom:14,cursor:"pointer"}}>
-                <input type="checkbox" checked={rem.enabled} onChange={e=>setRem(r=>({...r,enabled:e.target.checked}))}/> 開啟寄出提醒信件
+                <input type="checkbox" checked={remEnabled} onChange={e=>{ setRemEnabled(e.target.checked); saveReminder(e.target.checked,remItems); }}/> 開啟寄出提醒信件
               </label>
+
               <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:T.muted,padding:"0 2px 6px",borderBottom:`1px solid ${T.border}`}}>
                 <span>提醒項目</span><span>寄出日期</span>
               </div>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 2px",borderBottom:`1px solid ${T.border}`}}>
-                <span style={{fontSize:14,color:T.ink,fontWeight:600}}>💰 收入（含信用卡帳單）</span>
-                <select value={rem.billsDay} onChange={e=>setRem(r=>({...r,billsDay:+e.target.value}))} style={{padding:"9px 8px",borderRadius:10,border:`1px solid ${T.border}`,background:T.bg,fontSize:13,fontFamily:"inherit",color:T.ink}}>
-                  {Array.from({length:31},(_,i)=>i+1).map(d=><option key={d} value={d}>每月 {d} 號</option>)}
-                </select>
-              </div>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 2px"}}>
-                <span style={{fontSize:14,color:T.ink,fontWeight:600}}>🏦 存款</span>
-                <select value={rem.savingsDay} onChange={e=>setRem(r=>({...r,savingsDay:+e.target.value}))} style={{padding:"9px 8px",borderRadius:10,border:`1px solid ${T.border}`,background:T.bg,fontSize:13,fontFamily:"inherit",color:T.ink}}>
-                  <option value={0}>每月最後一天</option>
-                  {Array.from({length:31},(_,i)=>i+1).map(d=><option key={d} value={d}>每月 {d} 號</option>)}
-                </select>
-              </div>
-              <div style={{fontSize:11,color:T.muted,marginTop:2}}>若當月沒有該日（例如 31 號），會在當月最後一天寄出</div>
+              {remItems.length===0 && <div style={{fontSize:13,color:T.muted,textAlign:"center",padding:"18px 0"}}>目前沒有提醒項目</div>}
+              {remItems.map(item=> remEdit===item.id ? (
+                <div key={item.id} style={{padding:"12px 2px",borderBottom:`1px solid ${T.border}`}}>
+                  <input value={remDraft.name} onChange={e=>setRemDraft(d=>({...d,name:e.target.value}))} placeholder="提醒項目名稱"
+                    style={{width:"100%",padding:"9px 12px",borderRadius:10,border:`1.5px solid ${T.border}`,fontSize:14,color:T.ink,background:"#fff",outline:"none",boxSizing:"border-box",fontFamily:"inherit",marginBottom:8}}/>
+                  <select value={remDraft.day} onChange={e=>setRemDraft(d=>({...d,day:+e.target.value}))} style={{padding:"9px 8px",borderRadius:10,border:`1px solid ${T.border}`,background:T.bg,fontSize:13,fontFamily:"inherit",color:T.ink}}>
+                    <option value={0}>每月最後一天</option>
+                    {Array.from({length:31},(_,i)=>i+1).map(d=><option key={d} value={d}>每月 {d} 號</option>)}
+                  </select>
+                  <div style={{display:"flex",gap:8,marginTop:10}}>
+                    <button onClick={commitRemEdit} style={{flex:1,padding:"9px 0",background:T.accent,color:"#fff",border:"none",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>完成</button>
+                    <button onClick={()=>setRemEdit(null)} style={{flex:1,padding:"9px 0",background:"#fff",color:T.muted,border:`1.5px solid ${T.border}`,borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>取消</button>
+                  </div>
+                </div>
+              ) : (
+                <div key={item.id} style={{display:"flex",alignItems:"center",gap:8,padding:"12px 2px",borderBottom:`1px solid ${T.border}`}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:14,color:T.ink,fontWeight:600}}>{item.name}</div>
+                    <div style={{fontSize:12,color:T.muted,marginTop:2}}>{remDayLabel(item.day)}{remSent[item.id]?`　· 上次寄出 ${remSent[item.id]}`:""}</div>
+                  </div>
+                  <button onClick={()=>startRemEdit(item)} style={{padding:"5px 9px",background:T.accentLight,color:T.accent,border:`1px solid ${T.accent}44`,borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✏️ 編輯</button>
+                  <button onClick={()=>deleteRemItem(item.id)} style={{width:28,height:28,background:"none",color:T.muted,border:`1px solid ${T.border}`,borderRadius:7,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>✕</button>
+                </div>
+              ))}
+              {remEdit==="new" && (
+                <div style={{padding:"12px 2px",borderBottom:`1px solid ${T.border}`}}>
+                  <input value={remDraft.name} onChange={e=>setRemDraft(d=>({...d,name:e.target.value}))} placeholder="提醒項目名稱（例如：投資帳戶餘額）"
+                    style={{width:"100%",padding:"9px 12px",borderRadius:10,border:`1.5px solid ${T.border}`,fontSize:14,color:T.ink,background:"#fff",outline:"none",boxSizing:"border-box",fontFamily:"inherit",marginBottom:8}}/>
+                  <select value={remDraft.day} onChange={e=>setRemDraft(d=>({...d,day:+e.target.value}))} style={{padding:"9px 8px",borderRadius:10,border:`1px solid ${T.border}`,background:T.bg,fontSize:13,fontFamily:"inherit",color:T.ink}}>
+                    <option value={0}>每月最後一天</option>
+                    {Array.from({length:31},(_,i)=>i+1).map(d=><option key={d} value={d}>每月 {d} 號</option>)}
+                  </select>
+                  <div style={{display:"flex",gap:8,marginTop:10}}>
+                    <button onClick={commitRemEdit} style={{flex:1,padding:"9px 0",background:T.accent,color:"#fff",border:"none",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>新增</button>
+                    <button onClick={()=>setRemEdit(null)} style={{flex:1,padding:"9px 0",background:"#fff",color:T.muted,border:`1.5px solid ${T.border}`,borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>取消</button>
+                  </div>
+                </div>
+              )}
+              <div style={{fontSize:11,color:T.muted,marginTop:8}}>若當月沒有該日（例如 31 號），會在當月最後一天寄出。修改後會自動儲存。</div>
+
               <div style={{display:"flex",gap:8,marginTop:14}}>
-                <button onClick={saveReminder} disabled={remBusy}
-                  style={{flex:1,padding:"11px 0",background:T.accent,color:"#fff",border:"none",borderRadius:12,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",opacity:remBusy?0.6:1}}>儲存設定</button>
+                <button onClick={()=>startRemEdit(null)} disabled={remEdit!==null}
+                  style={{flex:1,padding:"11px 0",background:T.accent,color:"#fff",border:"none",borderRadius:12,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",opacity:remEdit!==null?0.5:1}}>＋ 新增提醒項目</button>
                 <button onClick={sendTestMail} disabled={remBusy}
                   style={{flex:1,padding:"11px 0",background:"#fff",color:T.accent,border:`1.5px solid ${T.accent}`,borderRadius:12,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",opacity:remBusy?0.6:1}}>寄測試信</button>
               </div>
               {remMsg && <div style={{fontSize:12,color:T.muted,marginTop:10}}>{remMsg}</div>}
-              {(remLastSent.bills||remLastSent.savings) && <div style={{fontSize:11,color:T.muted,marginTop:6}}>上次自動寄出：{remLastSent.bills&&`收入／信用卡 ${remLastSent.bills}`}{remLastSent.bills&&remLastSent.savings?"　":""}{remLastSent.savings&&`存款 ${remLastSent.savings}`}</div>}
             </div>
           )}
 
