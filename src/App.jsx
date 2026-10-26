@@ -972,11 +972,17 @@ function FinanceApp({ user, onLogout }) {
               </button>
             </div>
           </div>
-          <div style={{display:"flex",gap:7,marginBottom:14}}>
+          <div style={{display:"flex",gap:10,marginBottom:14,alignItems:"stretch"}}>
             <button onClick={()=>setFormState({mode:"add"})}
-              style={{flex:1,padding:"12px 0",background:T.accent,color:"#fff",border:"none",borderRadius:12,fontSize:13,fontWeight:700,cursor:"pointer",letterSpacing:0.3,fontFamily:"inherit",boxShadow:`0 3px 10px ${T.accent}44`}}>
-              ＋ 新增支出
+              style={{flexShrink:0,width:84,height:84,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,background:T.accent,color:"#fff",border:"none",borderRadius:16,cursor:"pointer",fontFamily:"inherit",boxShadow:`0 3px 10px ${T.accent}44`}}>
+              <span style={{fontSize:26,fontWeight:700,lineHeight:1}}>＋</span>
+              <span style={{fontSize:12,fontWeight:700,letterSpacing:0.3}}>新增支出</span>
             </button>
+            <div style={{flex:1,height:84,borderRadius:16,overflow:"hidden",background:T.accentLight,display:"flex",alignItems:"center",justifyContent:"center"}}>
+              {footerImg
+                ? <img src={footerImg} alt="" style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
+                : <span style={{fontSize:11,color:T.muted,textAlign:"center",padding:"0 8px",lineHeight:1.6}}>🖼️ 到「設定」→「照片」<br/>上傳你們的照片</span>}
+            </div>
           </div>
           <div style={{display:"flex",borderTop:`1px solid ${T.border}`,overflowX:"auto"}}>
             {[["home","明細"],["income","月收入"],["credit","信用卡"],["savings","存款"],["settings","設定"]].map(([k,l])=>(
@@ -1045,7 +1051,7 @@ function FinanceApp({ user, onLogout }) {
                 {categories.map(c=>(
                   <button key={c.id} onClick={()=>setFilterCat(filterCat===c.id?"":c.id)}
                     style={{flexShrink:0,display:"flex",alignItems:"center",gap:4,padding:"6px 12px",borderRadius:20,border:`1.5px solid ${filterCat===c.id?T.accent:T.border}`,background:filterCat===c.id?T.accentLight:"#fff",color:filterCat===c.id?T.accent:T.muted,fontSize:12,fontWeight:filterCat===c.id?700:500,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>
-                    <span>{c.icon}</span>{c.label}
+                    <CatThumb item={c} size={12} box={20}/>{c.label}
                   </button>
                 ))}
               </div>
@@ -1056,7 +1062,7 @@ function FinanceApp({ user, onLogout }) {
                 const catTotal = filtered.reduce((s,r)=>s+r.amount,0);
                 return cat ? (
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,padding:"8px 12px",background:T.accentLight,borderRadius:11}}>
-                    <span style={{fontSize:13,fontWeight:700,color:T.accent}}>{cat.icon} {cat.label}</span>
+                    <span style={{fontSize:13,fontWeight:700,color:T.accent,display:"flex",alignItems:"center",gap:6}}><CatThumb item={cat} size={13} box={22}/>{cat.label}</span>
                     <span style={{fontSize:13,fontWeight:700,color:T.accent}}>{filtered.length} 筆 · {fmt(catTotal)}</span>
                   </div>
                 ) : null;
@@ -1196,25 +1202,6 @@ function FinanceApp({ user, onLogout }) {
                 )}
               </div>
 
-              {/* 底部圖片 */}
-              <div style={{marginTop:8,borderRadius:16,overflow:"hidden"}}>
-                {footerImg?(
-                  <div style={{position:"relative"}}>
-                    <img src={footerImg} alt="" style={{width:"100%",display:"block",borderRadius:16,maxHeight:300,objectFit:"cover"}}/>
-                    <button onClick={removeFooterImg}
-                      style={{position:"absolute",top:10,right:10,background:"rgba(0,0,0,0.45)",color:"#fff",border:"none",borderRadius:8,padding:"5px 12px",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>
-                      移除圖片
-                    </button>
-                  </div>
-                ):(
-                  <label style={{display:"block",cursor:"pointer"}}>
-                    <div style={{border:`2px dashed ${T.border}`,borderRadius:16,padding:"30px 0",textAlign:"center",color:T.muted,fontSize:13}}>
-                      <div style={{fontSize:30,marginBottom:8}}>🖼️</div>點此上傳首頁底部圖片
-                    </div>
-                    <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(f)imgReader(f,saveFooterImg);}}/>
-                  </label>
-                )}
-              </div>
             </>
           )}
 
@@ -1685,10 +1672,10 @@ function FinanceApp({ user, onLogout }) {
 
           {/* 預算 */}
           {tab==="settings" && (
-            <div style={{display:"flex",gap:8,marginBottom:14}}>
-              {[["budget","💰 預算"],["recurring","🔄 固定支出"],["category","🏷️ 分類"],["reminder","📧 提醒"]].map(([k,l])=>(
+            <div style={{display:"flex",gap:8,marginBottom:14,overflowX:"auto"}}>
+              {[["budget","💰 預算"],["recurring","🔄 固定支出"],["category","🏷️ 分類"],["reminder","📧 提醒"],["photo","🖼️ 照片"]].map(([k,l])=>(
                 <button key={k} onClick={()=>setSetSub(k)}
-                  style={{flex:1,padding:"10px 0",borderRadius:12,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap",
+                  style={{flex:1,flex:"1 0 auto",padding:"10px 10px",borderRadius:12,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap",
                     border:`1.5px solid ${setSub===k?T.accent:T.border}`,background:setSub===k?T.accent:"#fff",color:setSub===k?"#fff":T.muted}}>
                   {l}
                 </button>
@@ -1815,6 +1802,26 @@ function FinanceApp({ user, onLogout }) {
           )}
 
           {/* 固定支出 */}
+          {tab==="settings" && setSub==="photo" && (
+            <div style={{...cardSt}}>
+              <div style={{fontSize:14,fontWeight:700,color:T.ink,marginBottom:4}}>🖼️ 首頁照片</div>
+              <div style={{fontSize:12,color:T.muted,marginBottom:14,lineHeight:1.7}}>這張照片會顯示在首頁最上方、「新增支出」按鈕的右邊。</div>
+              {footerImg && <img src={footerImg} alt="" style={{width:"100%",maxHeight:220,objectFit:"cover",borderRadius:14,display:"block",marginBottom:12}}/>}
+              <label style={{display:"block",cursor:"pointer"}}>
+                <div style={{padding:"12px 0",textAlign:"center",background:T.accent,color:"#fff",borderRadius:12,fontSize:13,fontWeight:700}}>
+                  {footerImg?"更換照片":"📷 上傳照片"}
+                </div>
+                <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(f)imgReader(f,saveFooterImg);e.target.value="";}}/>
+              </label>
+              {footerImg && (
+                <button onClick={removeFooterImg}
+                  style={{width:"100%",marginTop:8,padding:"11px 0",background:"#fff",color:T.danger,border:`1.5px solid ${T.danger}66`,borderRadius:12,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                  移除照片
+                </button>
+              )}
+            </div>
+          )}
+
           {tab==="settings" && setSub==="reminder" && (
             <div style={{...cardSt}}>
               <div style={{fontSize:14,fontWeight:700,color:T.ink,marginBottom:4}}>📧 每月提醒信</div>
