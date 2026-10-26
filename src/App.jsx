@@ -173,6 +173,7 @@ function Calculator({ initial="", calcIcon, onConfirm, onClose }) {
 const DEFAULT_CREDIT_CARDS = ["書宇聯邦","書宇匯豐","書宇玉山","書宇台灣銀行","書宇遠東商銀","書宇富邦","晴儀華南","晴儀台新","晴儀中國信託","晴儀星展","晴儀元大","晴儀富邦"];
 
 function RecordForm({ isEdit, initialForm, categories, calcIcon, creditCards, onSubmit, onClose }) {
+  useEffect(()=>{ const o=document.body.style.overflow; document.body.style.overflow="hidden"; return ()=>{ document.body.style.overflow=o; }; },[]);
   const [form,      setForm]      = useState({ date:today(), item:"", note:"", catMain:"", catSub:"", payment:"cash", creditCard:"", amount:"", ...initialForm });
   const [formError, setFormError] = useState("");
   const [showCalc,  setShowCalc]  = useState(false);
@@ -194,10 +195,10 @@ function RecordForm({ isEdit, initialForm, categories, calcIcon, creditCards, on
     <>
       <div style={{position:"fixed",inset:0,background:"rgba(44,44,44,0.4)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:999,backdropFilter:"blur(3px)"}}
         onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
-        <div style={{background:T.card,borderRadius:"24px 24px 0 0",padding:"22px 18px 32px",width:"100%",maxWidth:420,maxHeight:"92vh",overflowY:"auto"}}>
+        <div style={{background:T.card,borderRadius:"24px 24px 0 0",padding:"0 18px 32px",width:"100%",maxWidth:420,maxHeight:Math.round((window.visualViewport?.height||window.innerHeight)*0.92)+"px",overflowY:"auto",overscrollBehavior:"contain",WebkitOverflowScrolling:"touch"}}>
 
           {/* 標題 */}
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
+          <div style={{position:"sticky",top:0,zIndex:5,background:T.card,padding:"18px 0 12px",marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <div style={{display:"flex",alignItems:"center",gap:8}}>
               {isEdit && (
                 <span style={{fontSize:11,background:T.warmLight,color:T.warm,borderRadius:8,padding:"3px 10px",fontWeight:700,letterSpacing:0.5}}>
@@ -206,7 +207,7 @@ function RecordForm({ isEdit, initialForm, categories, calcIcon, creditCards, on
               )}
               <div style={{fontSize:17,fontWeight:700,color:T.ink}}>{isEdit?"編輯支出":"新增支出"}</div>
             </div>
-            <button onClick={onClose} style={{background:T.bg,border:"none",borderRadius:8,width:30,height:30,cursor:"pointer",color:T.muted,fontSize:15}}>✕</button>
+            <button onClick={onClose} style={{background:T.bg,border:"none",borderRadius:10,width:38,height:38,cursor:"pointer",color:T.muted,fontSize:17}}>✕</button>
           </div>
 
           <div style={{marginBottom:13}}>
