@@ -17,7 +17,8 @@ function getAdmin() {
 async function sendMail(items, subject) {
   const to = (process.env.REMINDER_TO || ALLOWED.join(",")).split(",").map(s => s.trim()).filter(Boolean);
   const appUrl = process.env.APP_URL || "";
-  const list = items.map(i => `<li style="margin:6px 0">${i}</li>`).join("");
+  const esc = x => String(x).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const list = items.map(i => `<li style="margin:6px 0">${esc(i)}</li>`).join("");
   const transporter = nodemailer.createTransport({
     service: "gmail",
     auth: { user: process.env.GMAIL_USER, pass: process.env.GMAIL_APP_PASSWORD },
@@ -34,13 +35,17 @@ async function sendMail(items, subject) {
   });
 }
 
-// 兩種提醒：收入＋信用卡帳單（預設每月 5 號）、存款（預設每月最後一天，day=0 代表月底）
-const RULES = [
-  { key: "bills", dayField: "billsDay", defDay: 5, sentField: "lastSentBills",
-    items: ["收入", "信用卡帳單"], subject: "❤️ 理財幫手提醒：請輸入本月收入與信用卡帳單" },
-  { key: "savings", dayField: "savingsDay", defDay: 0, sentField: "lastSentSavings",
-    items: ["存款"], subject: "❤️ 理財幫手提醒：請輸入本月存款" },
-];
+// 提醒項目：設定頁可自由新增／編輯（settings/reminder.items）。舊版資料沒有 items 時使用預設值。
+function getItems(cfg) {
+  if (Array.isArray(cfg.items)) return cfg.items;
+  return [
+    { id: "income", name: "收入與信用卡帳單", day: cfg.billsDay ?? 5 },
+    { id: "savings", name: "存款", day: cfg.savingsDay ?? 0 },
+  ];
+}
+function sentOf(cfg, id) {
+  return (cfg.sent && cfg.sent[id]) || (id === "income" ? cfg.lastSentBills : id === "savings" ? cfg.lastSentSavings : "") || "";
+}
 
 module.exports = async (req, res) => {
   try {
@@ -55,7 +60,7 @@ module.exports = async (req, res) => {
       if (!m) return res.status(401).json({ error: "未登入" });
       const dec = await fb.auth().verifyIdToken(m[1]);
       if (!ALLOWED.includes((dec.email || "").toLowerCase())) return res.status(403).json({ error: "沒有權限" });
-      await sendMail(["收入", "信用卡帳單", "存款"], "❤️ 理財幫手提醒（測試信）");
+      await sendMail(getItems(cfg).map(i => i.name), "❤️ 理財幫手提醒（測試信）");
       return res.status(200).json({ ok: true });
     }
 
@@ -69,17 +74,20 @@ module.exports = async (req, res) => {
     const y = tw.getUTCFullYear(), mo = tw.getUTCMonth(), d = tw.getUTCDate();
     const lastDay = new Date(Date.UTC(y, mo + 1, 0)).getUTCDate();
     const ym = `${y}-${String(mo + 1).padStart(2, "0")}`;
-    const sent = [], skipped = [];
-    for (const r of RULES) {
-      const day = cfg[r.dayField] ?? r.defDay;
+    const due = [];
+    for (const it of getItems(cfg)) {
+      const day = it.day ?? 0;
       const target = day === 0 ? lastDay : Math.min(day, lastDay);
-      if (d !== target) { skipped.push(`${r.key}: not today`); continue; }
-      if (cfg[r.sentField] === ym) { skipped.push(`${r.key}: already sent`); continue; }
-      await sendMail(r.items, r.subject);
-      await ref.set({ [r.sentField]: ym }, { merge: true });
-      sent.push(r.key);
+      if (d === target && sentOf(cfg, it.id) !== ym) due.push(it);
     }
-    return res.status(200).json({ ok: true, sent, skipped });
+    if (due.length === 0) return res.status(200).json({ ok: true, sent: [], note: "nothing due today" });
+    const names = due.map(i => i.name);
+    await sendMail(names, `❤️ 理財幫手提醒：請輸入本月${names.join("、")}`);
+    const sentMap = {};
+    due.forEach(i => { sentMap[i.id] = ym; });
+    await ref.set({ sent: sentMap }, { merge: true });
+    const sent = names;
+    return res.status(200).json({ ok: true, sent });
   } catch (e) {
     console.error(e);
     return res.status(500).json({ error: e.message });
