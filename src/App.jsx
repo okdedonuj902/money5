@@ -174,6 +174,14 @@ const DEFAULT_CREDIT_CARDS = ["書宇聯邦","書宇匯豐","書宇玉山","書�
 
 function RecordForm({ isEdit, initialForm, categories, calcIcon, creditCards, onSubmit, onClose }) {
   useEffect(()=>{ const o=document.body.style.overflow; document.body.style.overflow="hidden"; return ()=>{ document.body.style.overflow=o; }; },[]);
+  // 跟著手機「實際看得到的範圍」調整視窗位置與高度（鍵盤跳出時不會把畫面推走）
+  const [vv,setVv]=useState(()=>({h:window.visualViewport?.height||window.innerHeight, top:window.visualViewport?.offsetTop||0}));
+  useEffect(()=>{
+    const v=window.visualViewport; if(!v) return;
+    const upd=()=>setVv({h:v.height, top:v.offsetTop});
+    v.addEventListener("resize",upd); v.addEventListener("scroll",upd);
+    return ()=>{ v.removeEventListener("resize",upd); v.removeEventListener("scroll",upd); };
+  },[]);
   const [form,      setForm]      = useState({ date:today(), item:"", note:"", catMain:"", catSub:"", payment:"cash", creditCard:"", amount:"", ...initialForm });
   const [formError, setFormError] = useState("");
   const [showCalc,  setShowCalc]  = useState(false);
@@ -193,9 +201,9 @@ function RecordForm({ isEdit, initialForm, categories, calcIcon, creditCards, on
 
   return (
     <>
-      <div style={{position:"fixed",inset:0,background:"rgba(44,44,44,0.4)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:999,backdropFilter:"blur(3px)"}}
+      <div style={{position:"fixed",left:0,right:0,top:vv.top,height:vv.h,background:"rgba(44,44,44,0.4)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:999,backdropFilter:"blur(3px)"}}
         onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
-        <div style={{background:T.card,borderRadius:"24px 24px 0 0",padding:"0 18px 32px",width:"100%",maxWidth:420,maxHeight:Math.round((window.visualViewport?.height||window.innerHeight)*0.92)+"px",overflowY:"auto",overscrollBehavior:"contain",WebkitOverflowScrolling:"touch"}}>
+        <div style={{background:T.card,borderRadius:"24px 24px 0 0",padding:"0 18px 32px",width:"100%",maxWidth:420,maxHeight:"94%",overflowY:"auto",overscrollBehavior:"contain",WebkitOverflowScrolling:"touch"}}>
 
           {/* 標題 */}
           <div style={{position:"sticky",top:0,zIndex:5,background:T.card,padding:"18px 0 12px",marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -634,7 +642,7 @@ function FinanceApp({ user, onLogout }) {
   const [categories,  setCategories]  = useState(DEFAULT_CATEGORIES);
   const [calcIcon,    setCalcIcon]    = useState({emoji:"🧮",img:null});
   const [footerImg,   setFooterImg]   = useState(null);
-  const [footerPos,   setFooterPos]   = useState({x:50,y:35,zoom:1,h:84}); // 首頁照片的顯示位置／縮放／高度
+  const [footerPos,   setFooterPos]   = useState({x:50,y:35,zoom:1,h:84,fit:"cover"}); // 首頁照片的顯示位置／縮放／高度
   const footerPosLoaded = useRef(false);
   const [loading,     setLoading]     = useState(true);
   const [loadErr,     setLoadErr]     = useState("");
@@ -1009,9 +1017,9 @@ function FinanceApp({ user, onLogout }) {
               <span style={{fontSize:26,fontWeight:700,lineHeight:1}}>＋</span>
               <span style={{fontSize:12,fontWeight:700,letterSpacing:0.3}}>新增支出</span>
             </button>
-            <div style={{flex:1,height:footerPos.h,minHeight:84,borderRadius:16,overflow:"hidden",background:T.accentLight,display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <div style={{flex:1,height:footerPos.h,minHeight:84,borderRadius:16,overflow:"hidden",background:footerImg?T.headerBg:T.accentLight,display:"flex",alignItems:"center",justifyContent:"center"}}>
               {footerImg
-                ? <img src={footerImg} alt="" style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:`${footerPos.x}% ${footerPos.y}%`,transform:`scale(${footerPos.zoom})`,transformOrigin:`${footerPos.x}% ${footerPos.y}%`,display:"block"}}/>
+                ? <img src={footerImg} alt="" style={{width:"100%",height:"100%",objectFit:footerPos.fit==="contain"?"contain":"cover",objectPosition:`${footerPos.x}% ${footerPos.y}%`,transform:`scale(${footerPos.zoom})`,transformOrigin:`${footerPos.x}% ${footerPos.y}%`,display:"block"}}/>
                 : <span style={{fontSize:11,color:T.muted,textAlign:"center",padding:"0 8px",lineHeight:1.6}}>🖼️ 到「設定」→「照片」<br/>上傳你們的照片</span>}
             </div>
           </div>
@@ -1841,18 +1849,25 @@ function FinanceApp({ user, onLogout }) {
                 <>
                   <div style={{fontSize:12,color:T.muted,marginBottom:6}}>預覽（首頁實際看到的樣子）</div>
                   <div style={{display:"flex",justifyContent:"center",marginBottom:14}}>
-                    <div style={{width:270,maxWidth:"100%",height:footerPos.h,borderRadius:16,overflow:"hidden",background:T.accentLight}}>
-                      <img src={footerImg} alt="" style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:`${footerPos.x}% ${footerPos.y}%`,transform:`scale(${footerPos.zoom})`,transformOrigin:`${footerPos.x}% ${footerPos.y}%`,display:"block"}}/>
+                    <div style={{width:270,maxWidth:"100%",height:footerPos.h,borderRadius:16,overflow:"hidden",background:T.headerBg,border:`1px dashed ${T.border}`,boxSizing:"border-box"}}>
+                      <img src={footerImg} alt="" style={{width:"100%",height:"100%",objectFit:footerPos.fit==="contain"?"contain":"cover",objectPosition:`${footerPos.x}% ${footerPos.y}%`,transform:`scale(${footerPos.zoom})`,transformOrigin:`${footerPos.x}% ${footerPos.y}%`,display:"block"}}/>
                     </div>
                   </div>
-                  {[["y","⬆️⬇️ 上下位置",0,100,1,"頭頂","腳"],["x","⬅️➡️ 左右位置",0,100,1,"左","右"],["zoom","🔍 放大",1,3,0.05,"1 倍","3 倍"],["h","↕️ 照片高度",84,200,2,"小","大"]].map(([k,l,mn,mx,st,a,b])=>(
+                  <div style={{fontSize:12,fontWeight:700,color:T.ink,marginBottom:6}}>顯示方式</div>
+                  <div style={{display:"flex",gap:0,borderRadius:10,overflow:"hidden",border:`1.5px solid ${T.border}`,marginBottom:14}}>
+                    {[["cover","填滿（會裁掉邊緣）"],["contain","完整顯示（空白補底色）"]].map(([v,l])=>(
+                      <button key={v} onClick={()=>updateFooterPos({fit:v})}
+                        style={{flex:1,padding:"9px 4px",border:"none",background:(footerPos.fit||"cover")===v?T.accent:"#fff",color:(footerPos.fit||"cover")===v?"#fff":T.muted,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{l}</button>
+                    ))}
+                  </div>
+                  {[["y","⬆️⬇️ 上下位置",0,100,1,"頭頂","腳"],["x","⬅️➡️ 左右位置",0,100,1,"左","右"],["zoom","🔍 縮小／放大",0.3,3,0.05,"縮小","放大"],["h","↕️ 照片高度",84,200,2,"小","大"]].map(([k,l,mn,mx,st,a,b])=>(
                     <div key={k} style={{marginBottom:12}}>
                       <div style={{fontSize:12,fontWeight:700,color:T.ink,marginBottom:4}}>{l}</div>
                       <input type="range" min={mn} max={mx} step={st} value={footerPos[k]} onChange={e=>updateFooterPos({[k]:+e.target.value})} style={{width:"100%",accentColor:T.accent}}/>
                       <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:T.muted}}><span>{a}</span><span>{b}</span></div>
                     </div>
                   ))}
-                  <button onClick={()=>updateFooterPos({x:50,y:35,zoom:1,h:84})}
+                  <button onClick={()=>updateFooterPos({x:50,y:35,zoom:1,h:84,fit:"cover"})}
                     style={{width:"100%",marginBottom:12,padding:"9px 0",background:"#fff",color:T.muted,border:`1.5px solid ${T.border}`,borderRadius:10,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>恢復預設</button>
                 </>
               )}
