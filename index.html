@@ -2,7 +2,11 @@
 <html lang="zh-TW">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
+    <style>
+      /* 手機輸入時字體小於 16px 會被瀏覽器自動放大整個畫面，這裡統一設成 16px 避免 */
+      @media (max-width: 800px) { input, select, textarea { font-size: 16px !important; } }
+    </style>
     <title>Toby and Yvette 的理財幫手</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
