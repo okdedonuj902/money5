@@ -1014,7 +1014,15 @@ function FinanceApp({ user, onLogout }) {
           <div style={{display:"flex",gap:10,marginBottom:14,alignItems:"stretch"}}>
             <button onClick={()=>setFormState({mode:"add"})}
               style={{flexShrink:0,alignSelf:"flex-start",width:84,height:84,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,background:T.accent,color:"#fff",border:"none",borderRadius:16,cursor:"pointer",fontFamily:"inherit",boxShadow:`0 3px 10px ${T.accent}44`}}>
-              <span style={{fontSize:26,fontWeight:700,lineHeight:1}}>＋</span>
+              <svg width="34" height="34" viewBox="0 0 64 64" style={{display:"block"}} aria-hidden="true">
+                <path d="M26 8 h12 a6 6 0 0 1 6 6 v12 h12 a6 6 0 0 1 6 6 v0 a6 6 0 0 1 -6 6 h-12 v12 a6 6 0 0 1 -6 6 h-12 a6 6 0 0 1 -6 -6 v-12 h-12 a6 6 0 0 1 -6 -6 v0 a6 6 0 0 1 6 -6 h12 v-12 a6 6 0 0 1 6 -6z" fill="#FFF6E3" stroke="#F3D9A4" strokeWidth="3" strokeLinejoin="round"/>
+                <ellipse cx="27" cy="31" rx="2.2" ry="2.8" fill="#5A4636"/><ellipse cx="37" cy="31" rx="2.2" ry="2.8" fill="#5A4636"/>
+                <circle cx="27.7" cy="30" r="0.8" fill="#fff"/><circle cx="37.7" cy="30" r="0.8" fill="#fff"/>
+                <path d="M29 36 q3 3 6 0" fill="none" stroke="#5A4636" strokeWidth="1.8" strokeLinecap="round"/>
+                <ellipse cx="22.5" cy="35.5" rx="3" ry="1.8" fill="#FFB3B8" opacity=".8"/><ellipse cx="41.5" cy="35.5" rx="3" ry="1.8" fill="#FFB3B8" opacity=".8"/>
+                <path d="M53 6 l1.6 3.6 3.6 1.6 -3.6 1.6 -1.6 3.6 -1.6 -3.6 -3.6 -1.6 3.6 -1.6z" fill="#FFE27A"/>
+                <circle cx="9" cy="12" r="2" fill="#FFE27A"/><circle cx="55" cy="52" r="1.8" fill="#fff" opacity=".8"/>
+              </svg>
               <span style={{fontSize:12,fontWeight:700,letterSpacing:0.3}}>新增支出</span>
             </button>
             <div style={{flex:1,height:footerPos.h,minHeight:84,borderRadius:16,overflow:"hidden",background:footerImg?T.headerBg:T.accentLight,display:"flex",alignItems:"center",justifyContent:"center"}}>
