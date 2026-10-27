@@ -1,5 +1,12 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
+import { initializeFirestore } from "firebase/firestore";
+import {
+  initializeAuth,
+  indexedDBLocalPersistence,
+  browserLocalPersistence,
+  browserSessionPersistence,
+  browserPopupRedirectResolver,
+} from "firebase/auth";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDc_mhkGwuiXS81NNXR3kWrnczPtByWlog",
@@ -11,5 +18,15 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
 
+// 資料庫：手機網路不穩時，自動改用較穩定的連線方式，避免一直卡在「載入中」
+export const db = initializeFirestore(app, {
+  experimentalAutoDetectLongPolling: true,
+});
+
+// 登入：iPhone 的 Safari／主畫面捷徑偶爾會讓 IndexedDB 卡住，
+// 所以依序準備多種儲存方式，哪個能用就用哪個。App.jsx 裡的 getAuth(getApp()) 會拿到這一份。
+initializeAuth(app, {
+  persistence: [indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence],
+  popupRedirectResolver: browserPopupRedirectResolver,
+});

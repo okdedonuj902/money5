@@ -569,6 +569,20 @@ function CreditCardManager({ creditCards, onSave, accentLight, accent, border, i
   );
 }
 
+// 載入超過 8 秒時，提示可以重新整理
+function SlowHint() {
+  const [slow,setSlow]=useState(false);
+  useEffect(()=>{ const t=setTimeout(()=>setSlow(true),8000); return ()=>clearTimeout(t); },[]);
+  if(!slow) return null;
+  return (
+    <div style={{marginTop:14,fontSize:13,color:T.muted,lineHeight:1.8}}>
+      載入比較久…<br/>
+      <button onClick={()=>window.location.reload()}
+        style={{marginTop:6,padding:"8px 18px",background:T.accent,color:"#fff",border:"none",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>重新整理</button>
+    </div>
+  );
+}
+
 // ══════════════════════════════════════════════════════
 // 登入閘門：只有家人的 Google 帳號可以進入
 // ══════════════════════════════════════════════════════
@@ -605,7 +619,7 @@ export default function App() {
   const box  = {background:T.card,borderRadius:20,padding:"32px 24px",width:"100%",maxWidth:360,textAlign:"center",boxShadow:"0 2px 12px rgba(0,0,0,0.06)"};
   const btn  = {width:"100%",padding:14,background:T.accent,color:"#fff",border:"none",borderRadius:14,fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit"};
 
-  if(user===undefined) return <div style={{...wrap,color:T.muted,fontSize:16}}>❤️ 載入中…</div>;
+  if(user===undefined) return <div style={{...wrap,color:T.muted,fontSize:16,flexDirection:"column"}}><div>❤️ 載入中…</div><SlowHint/></div>;
 
   if(!user) return (
     <div style={wrap}>
@@ -983,6 +997,7 @@ function FinanceApp({ user, onLogout }) {
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:T.bg,fontFamily:"'Noto Serif TC',serif",color:T.muted,fontSize:16}}>
       <div style={{textAlign:"center",padding:24,lineHeight:1.8}}>
         ❤️ 載入中…
+        <SlowHint/>
         {loadErr && <div style={{marginTop:12,fontSize:13,color:T.danger}}>無法連線到資料庫（{loadErr}）<br/>請重新登入，或檢查 Firestore 規則</div>}
       </div>
     </div>
