@@ -1017,22 +1017,17 @@ function FinanceApp({ user, onLogout }) {
 
         {/* HEADER */}
         <div style={{background:T.headerBg,borderBottom:`1px solid ${T.border}`,padding:"18px 18px 0"}}>
+          <div style={{fontSize:18,fontWeight:700,color:T.ink,letterSpacing:-0.3,whiteSpace:"nowrap",marginBottom:10}}>Toby and Yvette 的理財幫手 ❤️</div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-            <div>
-              <div style={{fontSize:18,fontWeight:700,color:T.ink,letterSpacing:-0.3}}>Toby and Yvette</div>
-              <div style={{fontSize:12,color:T.muted,letterSpacing:0.3}}>的理財幫手 ❤️</div>
-            </div>
-            <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}}>
-              <select value={filterMonth} onChange={e=>{ if(e.target.value==="__more__"){ setRecordsAll(true); return; } setFilterMonth(e.target.value); }}
+            <select value={filterMonth} onChange={e=>{ if(e.target.value==="__more__"){ setRecordsAll(true); return; } setFilterMonth(e.target.value); }}
                 style={{fontSize:12,color:T.muted,border:`1px solid ${T.border}`,borderRadius:8,padding:"5px 8px",background:T.bg,cursor:"pointer",fontFamily:"inherit"}}>
                 {monthOpts.map(m=><option key={m} value={m}>{m.replace("-","年")}月</option>)}
               {!recordsAll && <option value="__more__">⏬ 載入更早的月份…</option>}
               </select>
-              <button onClick={()=>{ if(window.confirm("確定要登出嗎？")) onLogout(); }} title={user?.email||""}
+            <button onClick={()=>{ if(window.confirm("確定要登出嗎？")) onLogout(); }} title={user?.email||""}
                 style={{fontSize:11,color:T.muted,background:"none",border:"none",padding:0,cursor:"pointer",fontFamily:"inherit",textDecoration:"underline"}}>
                 登出
               </button>
-            </div>
           </div>
           <div style={{display:"flex",gap:10,marginBottom:14,alignItems:"stretch"}}>
             <button onClick={()=>setFormState({mode:"add"})}
