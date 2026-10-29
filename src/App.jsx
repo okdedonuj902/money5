@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from "react";
-import * as XLSX from "xlsx";
 import { db } from "./firebase";
 import { getApp } from "firebase/app";
 import {
@@ -16,7 +15,7 @@ const ALLOWED_EMAILS = [
 const auth = getAuth(getApp());
 import {
   collection, doc, onSnapshot,
-  addDoc, deleteDoc, setDoc, updateDoc
+  addDoc, deleteDoc, setDoc, updateDoc, query, where
 } from "firebase/firestore";
 
 const DEFAULT_CATEGORIES = [
@@ -721,10 +720,18 @@ function FinanceApp({ user, onLogout }) {
   const [exportMode,   setExportMode]   = useState("all");
   const payMap = Object.fromEntries(PAYMENT_METHODS.map(p=>[p.id,p]));
 
-  useEffect(()=>{ const u=onSnapshot(collection(db,"records"),snap=>{ setRecords(snap.docs.map(d=>({id:d.id,...d.data()}))); setLoading(false); },err=>{ console.error(err); setLoadErr((err&&err.code)||"error"); }); return u; },[]);
+  // 只先載入最近 6 個月的記帳（打開速度快很多）；要看更早的月份時再載入全部
+  const [recordsAll, setRecordsAll] = useState(false);
+  useEffect(()=>{
+    const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()-5);
+    const cutoff=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-01`;
+    const q = recordsAll ? collection(db,"records") : query(collection(db,"records"),where("date",">=",cutoff));
+    const u=onSnapshot(q,snap=>{ setRecords(snap.docs.map(d=>({id:d.id,...d.data()}))); setLoading(false); },err=>{ console.error(err); setLoadErr((err&&err.code)||"error"); }); 
+    return u;
+  },[recordsAll]);
   useEffect(()=>{ const u=onSnapshot(doc(db,"settings","categories"),snap=>{ if(snap.exists()&&snap.data().list?.length>0) setCategories(snap.data().list); }); return u; },[]);
   useEffect(()=>{ const u=onSnapshot(doc(db,"settings","calcIcon"),snap=>{ if(snap.exists()) setCalcIcon(snap.data()); }); return u; },[]);
-  useEffect(()=>{ const u=onSnapshot(doc(db,"settings","footerImg"),snap=>{ if(snap.exists()){ const d=snap.data(); setFooterImg(d.url||null); if(d.pos){ setFooterPos(p=>({...p,...d.pos})); } footerPosLoaded.current=true; } }); return u; },[]);
+  useEffect(()=>{ if(loading) return; /* 首頁照片等記帳載入完才下載，加快開啟速度 */ const u=onSnapshot(doc(db,"settings","footerImg"),snap=>{ if(snap.exists()){ const d=snap.data(); setFooterImg(d.url||null); if(d.pos){ setFooterPos(p=>({...p,...d.pos})); } footerPosLoaded.current=true; } }); return u; },[loading]);
   useEffect(()=>{ setDoc(doc(db,"settings","calcIcon"),calcIcon); },[calcIcon]);
 
   // ── 信用卡 & 存款 ──
@@ -974,7 +981,7 @@ function FinanceApp({ user, onLogout }) {
   }
 
   async function saveCategories(cats) { await setDoc(doc(db,"settings","categories"),{list:cats}); setCategories(cats); }
-  async function saveFooterImg(url)   { const c=await compressImage(url,800,0.8); setFooterImg(c); setDoc(doc(db,"settings","footerImg"),{url:c},{merge:true}); }
+  async function saveFooterImg(url)   { const c=await compressImage(url,640,0.75); setFooterImg(c); setDoc(doc(db,"settings","footerImg"),{url:c},{merge:true}); }
   function removeFooterImg()          { setFooterImg(null); setDoc(doc(db,"settings","footerImg"),{url:null},{merge:true}); }
   function updateFooterPos(patch){ setFooterPos(p=>{ const n={...p,...patch}; clearTimeout(window.__fpT); window.__fpT=setTimeout(()=>{ setDoc(doc(db,"settings","footerImg"),{pos:n},{merge:true}); },500); return n; }); }
 
@@ -1016,9 +1023,10 @@ function FinanceApp({ user, onLogout }) {
               <div style={{fontSize:12,color:T.muted,letterSpacing:0.3}}>的理財幫手 ❤️</div>
             </div>
             <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}}>
-              <select value={filterMonth} onChange={e=>setFilterMonth(e.target.value)}
+              <select value={filterMonth} onChange={e=>{ if(e.target.value==="__more__"){ setRecordsAll(true); return; } setFilterMonth(e.target.value); }}
                 style={{fontSize:12,color:T.muted,border:`1px solid ${T.border}`,borderRadius:8,padding:"5px 8px",background:T.bg,cursor:"pointer",fontFamily:"inherit"}}>
                 {monthOpts.map(m=><option key={m} value={m}>{m.replace("-","年")}月</option>)}
+              {!recordsAll && <option value="__more__">⏬ 載入更早的月份…</option>}
               </select>
               <button onClick={()=>{ if(window.confirm("確定要登出嗎？")) onLogout(); }} title={user?.email||""}
                 style={{fontSize:11,color:T.muted,background:"none",border:"none",padding:0,cursor:"pointer",fontFamily:"inherit",textDecoration:"underline"}}>
@@ -1030,13 +1038,7 @@ function FinanceApp({ user, onLogout }) {
             <button onClick={()=>setFormState({mode:"add"})}
               style={{flexShrink:0,alignSelf:"flex-start",width:84,height:84,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,background:T.accent,color:"#fff",border:"none",borderRadius:16,cursor:"pointer",fontFamily:"inherit",boxShadow:`0 3px 10px ${T.accent}44`}}>
               <svg width="34" height="34" viewBox="0 0 64 64" style={{display:"block"}} aria-hidden="true">
-                <path d="M26 8 h12 a6 6 0 0 1 6 6 v12 h12 a6 6 0 0 1 6 6 v0 a6 6 0 0 1 -6 6 h-12 v12 a6 6 0 0 1 -6 6 h-12 a6 6 0 0 1 -6 -6 v-12 h-12 a6 6 0 0 1 -6 -6 v0 a6 6 0 0 1 6 -6 h12 v-12 a6 6 0 0 1 6 -6z" fill="#FFF6E3" stroke="#F3D9A4" strokeWidth="3" strokeLinejoin="round"/>
-                <ellipse cx="27" cy="31" rx="2.2" ry="2.8" fill="#5A4636"/><ellipse cx="37" cy="31" rx="2.2" ry="2.8" fill="#5A4636"/>
-                <circle cx="27.7" cy="30" r="0.8" fill="#fff"/><circle cx="37.7" cy="30" r="0.8" fill="#fff"/>
-                <path d="M29 36 q3 3 6 0" fill="none" stroke="#5A4636" strokeWidth="1.8" strokeLinecap="round"/>
-                <ellipse cx="22.5" cy="35.5" rx="3" ry="1.8" fill="#FFB3B8" opacity=".8"/><ellipse cx="41.5" cy="35.5" rx="3" ry="1.8" fill="#FFB3B8" opacity=".8"/>
-                <path d="M53 6 l1.6 3.6 3.6 1.6 -3.6 1.6 -1.6 3.6 -1.6 -3.6 -3.6 -1.6 3.6 -1.6z" fill="#FFE27A"/>
-                <circle cx="9" cy="12" r="2" fill="#FFE27A"/><circle cx="55" cy="52" r="1.8" fill="#fff" opacity=".8"/>
+                <path d="M26 6 h12 a4 4 0 0 1 4 4 v12 h12 a4 4 0 0 1 4 4 v12 a4 4 0 0 1 -4 4 h-12 v12 a4 4 0 0 1 -4 4 h-12 a4 4 0 0 1 -4 -4 v-12 h-12 a4 4 0 0 1 -4 -4 v-12 a4 4 0 0 1 4 -4 h12 v-12 a4 4 0 0 1 4 -4z" fill="#FFE98A"/>
               </svg>
               <span style={{fontSize:12,fontWeight:700,letterSpacing:0.3}}>新增支出</span>
             </button>
@@ -1209,26 +1211,28 @@ function FinanceApp({ user, onLogout }) {
                       <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:14}}>
                         <div style={{flex:1}}>
                           <div style={{fontSize:11,color:T.muted,marginBottom:4,fontWeight:600}}>從</div>
-                          <select value={exportFrom} onChange={e=>setExportFrom(e.target.value)}
+                          <select value={exportFrom} onChange={e=>{ if(e.target.value==="__more__"){ setRecordsAll(true); return; } setExportFrom(e.target.value); }}
                             style={{width:"100%",padding:"9px 10px",borderRadius:10,border:`1.5px solid ${T.border}`,fontSize:13,color:exportFrom?T.ink:T.muted,background:T.bg,fontFamily:"inherit",outline:"none"}}>
                             <option value="">選擇月份</option>
                             {monthOpts.slice().reverse().map(m=><option key={m} value={m}>{m.replace("-","年")}月</option>)}
+                            {!recordsAll && <option value="__more__">⏬ 載入更早的月份…</option>}
                           </select>
                         </div>
                         <div style={{fontSize:16,color:T.muted,paddingTop:18}}>→</div>
                         <div style={{flex:1}}>
                           <div style={{fontSize:11,color:T.muted,marginBottom:4,fontWeight:600}}>到</div>
-                          <select value={exportTo} onChange={e=>setExportTo(e.target.value)}
+                          <select value={exportTo} onChange={e=>{ if(e.target.value==="__more__"){ setRecordsAll(true); return; } setExportTo(e.target.value); }}
                             style={{width:"100%",padding:"9px 10px",borderRadius:10,border:`1.5px solid ${T.border}`,fontSize:13,color:exportTo?T.ink:T.muted,background:T.bg,fontFamily:"inherit",outline:"none"}}>
                             <option value="">選擇月份</option>
                             {monthOpts.slice().reverse().map(m=><option key={m} value={m}>{m.replace("-","年")}月</option>)}
+                            {!recordsAll && <option value="__more__">⏬ 載入更早的月份…</option>}
                           </select>
                         </div>
                       </div>
                     )}
 
                     {/* 確認匯出按鈕 */}
-                    <button onClick={()=>{
+                    <button onClick={async()=>{
                       let exportRecords = [...records];
                       let filename = "支出記錄_全部";
                       if(exportMode==="range" && exportFrom && exportTo){
@@ -1246,6 +1250,7 @@ function FinanceApp({ user, onLogout }) {
                         "小分類":findSub(categories,r.catMain,r.catSub)?.label||"",
                         "付款方式":payMap[r.payment]?.label||r.payment,"信用卡別":r.payment==="card"?(r.creditCard||""):"","金額 (NT$)":r.amount,
                       }));
+                      const XLSX = await import("xlsx"); // 按下匯出才載入，加快開啟速度
                       const ws=XLSX.utils.json_to_sheet(rows);
                       ws["!cols"]=[{wch:12},{wch:20},{wch:26},{wch:10},{wch:10},{wch:10},{wch:14},{wch:12}];
                       const wb=XLSX.utils.book_new();
