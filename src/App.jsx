@@ -758,6 +758,55 @@ function FinanceApp({ user, onLogout }) {
 
   // creditCards managed via state
   const SAVINGS_BANKS = ["晴儀郵局","晴儀富邦","晴儀將來","晴儀華南","晴儀台新","書宇郵局","書宇台銀"];
+  const USD_BANKS_DEFAULT = ["晴儀將來","晴儀台新"];
+  // 銀行清單可自行新增／改名（存在 settings/savingsBanks）
+  const [savingsBanks, setSavingsBanks] = useState({TWD:null,USD:null});
+  const [showBankMgr, setShowBankMgr]   = useState(false);
+  const [bankEdit,    setBankEdit]      = useState(null);   // 正在改名的銀行
+  const [bankDraft,   setBankDraft]     = useState("");
+  const [newBankName, setNewBankName]   = useState("");
+  const [newBankMode, setNewBankMode]   = useState(false);  // 表單裡選「＋ 新增銀行」
+  const [bankMsg,     setBankMsg]       = useState("");
+  useEffect(()=>{ const u=onSnapshot(doc(db,"settings","savingsBanks"),snap=>{ if(snap.exists()){ const d=snap.data(); setSavingsBanks({TWD:d.TWD||null,USD:d.USD||null}); } },()=>{}); return u; },[]);
+  function effBanks(c){
+    const base = savingsBanks[c] || (c==="TWD" ? SAVINGS_BANKS : USD_BANKS_DEFAULT);
+    const fromRecs = [...savingsHistory,...savingsRecs].filter(r=>(r.currency||"TWD")===c).map(r=>r.bank);
+    return [...new Set([...base,...fromRecs])].filter(Boolean);
+  }
+  async function saveBankList(c, list){ await setDoc(doc(db,"settings","savingsBanks"),{[c]:list},{merge:true}); }
+  async function addBank(c, name){
+    name=(name||"").trim(); if(!name) return false;
+    const cur=effBanks(c);
+    if(cur.includes(name)){ setBankMsg("這個銀行已經在清單裡了"); return false; }
+    await saveBankList(c,[...cur,name]); setBankMsg("✅ 已新增"); return true;
+  }
+  async function renameBank(c, oldName, newName){
+    newName=(newName||"").trim();
+    if(!newName||newName===oldName){ setBankEdit(null); return; }
+    const cur=effBanks(c);
+    if(cur.includes(newName)){ setBankMsg("已經有同名的銀行，請換一個名稱"); return; }
+    setBankMsg("改名中…");
+    try{
+      // 每月紀錄：文件 id 內含銀行名稱，所以要建立新文件再刪掉舊的
+      for(const h of savingsHistory.filter(h=>(h.currency||"TWD")===c && h.bank===oldName)){
+        const {id,...data}=h;
+        await setDoc(doc(db,"savingsHistory",`${h.month}_${c}_${newName}`),{...data,bank:newName});
+        await deleteDoc(doc(db,"savingsHistory",id));
+      }
+      // 「最新餘額」那份（報表網站也會讀）
+      const m=savingsRecs.find(r=>r.id===`${c}_${oldName}`);
+      if(m){ const {id,...data}=m; await setDoc(doc(db,"savingsRecs",`${c}_${newName}`),{...data,bank:newName}); await deleteDoc(doc(db,"savingsRecs",id)); }
+      await saveBankList(c,cur.map(b=>b===oldName?newName:b));
+      setBankMsg("✅ 已改名");
+    }catch(e){ setBankMsg("改名失敗（"+(e.code||e.message)+"）"); }
+    setBankEdit(null);
+  }
+  async function removeBank(c, name){
+    const used=[...savingsHistory,...savingsRecs].some(r=>(r.currency||"TWD")===c && r.bank===name);
+    if(used){ setBankMsg("這個銀行還有存款紀錄，無法刪除。可以用「改名」，或先刪掉它的紀錄"); return; }
+    if(!window.confirm(`確定要從清單移除「${name}」嗎？`)) return;
+    await saveBankList(c,effBanks(c).filter(b=>b!==name)); setBankMsg("✅ 已移除");
+  }
 
   const [incomeRecs,     setIncomeRecs]     = useState([]);
   const [showIncomeForm, setShowIncomeForm] = useState(false);
@@ -844,6 +893,8 @@ function FinanceApp({ user, onLogout }) {
     } else if(oldAccount){
       await fixSavingsMirror(currency, bank, cands);
     }
+    if(!effBanks(currency).includes(bank)) await addBank(currency,bank);
+    setNewBankMode(false);
     setSavingsForm({date:today(),month:savingsMonth,bank:"",balance:"",currency:"TWD"});
     setEditSavingsId(null);
     setShowSavingsForm(false);
@@ -1536,7 +1587,7 @@ function FinanceApp({ user, onLogout }) {
 
           {/* 存款 */}
           {tab==="savings" && (()=>{
-            const USD_BANKS_PRESET = ["晴儀將來","晴儀台新"]; // 其他 = 自行輸入
+            const bankList = effBanks(savingsTab);
             // 目前選的月份：該月份的紀錄 ＋ 舊資料（只有「最新一筆」、尚未建立該月紀錄的）
             const monthHist = savingsHistory.filter(h=>h.month===savingsMonth);
             const legacyRecs = savingsRecs
@@ -1551,7 +1602,7 @@ function FinanceApp({ user, onLogout }) {
             const currentRecs = savingsTab==="TWD" ? twdRecs : usdRecs;
             const currentTotal = savingsTab==="TWD" ? twdTotal : usdTotal;
             const currencySymbol = savingsTab==="TWD" ? "NT$" : "US$";
-            const currentBanks = savingsTab==="TWD" ? SAVINGS_BANKS : USD_BANKS_PRESET;
+            const currentBanks = bankList;
             return (
             <>
               {/* 月份選擇 */}
@@ -1573,10 +1624,44 @@ function FinanceApp({ user, onLogout }) {
                     </button>
                   ))}
                 </div>
-                <button onClick={()=>{ setShowSavingsForm(v=>!v); setEditSavingsId(null); setSavingsForm({date:today(),month:savingsMonth,bank:"",balance:"",currency:savingsTab}); }}
+                <button onClick={()=>{ setShowSavingsForm(v=>!v); setEditSavingsId(null); setNewBankMode(false); setSavingsForm({date:today(),month:savingsMonth,bank:"",balance:"",currency:savingsTab}); }}
                   style={{flexShrink:0,padding:"9px 14px",background:showSavingsForm?T.accent:"none",color:showSavingsForm?"#fff":T.accent,border:`1.5px solid ${T.accent}`,borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                   {showSavingsForm?"✕":"＋ 輸入餘額"}
                 </button>
+              </div>
+
+              {/* 管理銀行 */}
+              <div style={{marginBottom:12}}>
+                <button onClick={()=>{ setShowBankMgr(v=>!v); setBankEdit(null); setBankMsg(""); }}
+                  style={{background:"none",border:"none",color:T.accent,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0}}>
+                  {showBankMgr?"▲ 收起銀行管理":"⚙️ 新增／修改銀行名稱"}
+                </button>
+                {showBankMgr && (
+                  <div style={{...cardSt,marginTop:8}}>
+                    <div style={{fontSize:13,fontWeight:700,color:T.ink,marginBottom:8}}>{savingsTab==="TWD"?"🇹🇼 台幣銀行":"🇺🇸 美金帳戶"}</div>
+                    {bankList.map(b=> bankEdit===b ? (
+                      <div key={b} style={{display:"flex",gap:6,alignItems:"center",padding:"7px 0",borderBottom:`1px solid ${T.border}`}}>
+                        <input value={bankDraft} onChange={e=>setBankDraft(e.target.value)} autoFocus
+                          style={{flex:1,minWidth:0,padding:"8px 10px",borderRadius:9,border:`1.5px solid ${T.accent}`,fontSize:14,color:T.ink,background:"#fff",outline:"none",fontFamily:"inherit"}}/>
+                        <button onClick={()=>renameBank(savingsTab,b,bankDraft)} style={{padding:"7px 10px",background:T.accent,color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>完成</button>
+                        <button onClick={()=>setBankEdit(null)} style={{padding:"7px 10px",background:"#fff",color:T.muted,border:`1px solid ${T.border}`,borderRadius:8,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>取消</button>
+                      </div>
+                    ) : (
+                      <div key={b} style={{display:"flex",gap:8,alignItems:"center",padding:"9px 0",borderBottom:`1px solid ${T.border}`}}>
+                        <span style={{flex:1,fontSize:14,color:T.ink}}>{b}</span>
+                        <button onClick={()=>{ setBankEdit(b); setBankDraft(b); setBankMsg(""); }} style={{padding:"4px 9px",background:T.accentLight,color:T.accent,border:`1px solid ${T.accent}44`,borderRadius:7,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✏️ 改名</button>
+                        <button onClick={()=>removeBank(savingsTab,b)} style={{width:26,height:26,background:"none",color:T.muted,border:`1px solid ${T.border}`,borderRadius:6,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>✕</button>
+                      </div>
+                    ))}
+                    <div style={{display:"flex",gap:6,marginTop:10}}>
+                      <input value={newBankName} onChange={e=>setNewBankName(e.target.value)} placeholder="新增銀行／帳戶名稱"
+                        style={{flex:1,minWidth:0,padding:"9px 10px",borderRadius:9,border:`1.5px solid ${T.border}`,fontSize:14,color:T.ink,background:"#fff",outline:"none",fontFamily:"inherit"}}/>
+                      <button onClick={async()=>{ if(await addBank(savingsTab,newBankName)) setNewBankName(""); }} style={{padding:"9px 14px",background:T.accent,color:"#fff",border:"none",borderRadius:9,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>＋ 新增</button>
+                    </div>
+                    {bankMsg && <div style={{fontSize:12,color:T.muted,marginTop:8,lineHeight:1.6}}>{bankMsg}</div>}
+                    <div style={{fontSize:11,color:T.muted,marginTop:8,lineHeight:1.6}}>改名時，這個銀行過去每個月的紀錄會一起改成新名稱。</div>
+                  </div>
+                )}
               </div>
 
               {/* 新增/更新存款表單 */}
@@ -1595,37 +1680,18 @@ function FinanceApp({ user, onLogout }) {
                   </div>
                   <div style={{marginBottom:9}}>
                     <div style={{fontSize:11,fontWeight:700,color:T.muted,marginBottom:4}}>{savingsTab==="TWD"?"銀行別":"帳戶名稱"} *</div>
-                    {savingsTab==="TWD" ? (
-                      <select value={savingsForm.bank} onChange={e=>setSavingsForm(f=>({...f,bank:e.target.value}))}
-                        style={{width:"100%",padding:"9px 12px",borderRadius:10,border:`1.5px solid ${T.border}`,fontSize:13,color:savingsForm.bank?T.ink:T.muted,background:"#fff",outline:"none",fontFamily:"inherit"}}>
-                        <option value="">請選擇銀行</option>
-                        {SAVINGS_BANKS.map(b=><option key={b} value={b}>{b}</option>)}
-                      </select>
-                    ) : (
-                      <>
-                        {/* 快速選擇：晴儀將來 / 晴儀台新 / 其他 */}
-                        <div style={{display:"flex",flexWrap:"wrap",gap:7,marginBottom:8}}>
-                          {[...USD_BANKS_PRESET,"其他"].map(b=>{
-                            const isPreset = USD_BANKS_PRESET.includes(b);
-                            const isActive = isPreset
-                              ? savingsForm.bank===b
-                              : !USD_BANKS_PRESET.includes(savingsForm.bank);
-                            return (
-                              <button key={b} onClick={()=>setSavingsForm(f=>({...f,bank:isPreset?b:""}))}
-                                style={{padding:"7px 14px",borderRadius:9,border:`1.5px solid ${isActive?T.accent:T.border}`,background:isActive?T.accentLight:"#fff",color:isActive?T.accent:T.muted,fontSize:13,fontWeight:isActive?700:500,cursor:"pointer",fontFamily:"inherit"}}>
-                                {b}
-                              </button>
-                            );
-                          })}
-                        </div>
-                        {/* 「其他」選中時顯示自訂輸入框 */}
-                        {!USD_BANKS_PRESET.includes(savingsForm.bank) && (
-                          <input value={savingsForm.bank} onChange={e=>setSavingsForm(f=>({...f,bank:e.target.value}))}
-                            placeholder="請輸入帳戶名稱"
-                            style={{width:"100%",padding:"9px 12px",borderRadius:10,border:`1.5px solid ${T.border}`,fontSize:13,color:T.ink,background:"#fff",outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}
-                            autoFocus/>
-                        )}
-                      </>
+                    <select value={newBankMode?"__new__":savingsForm.bank}
+                      onChange={e=>{ if(e.target.value==="__new__"){ setNewBankMode(true); setSavingsForm(f=>({...f,bank:""})); } else { setNewBankMode(false); setSavingsForm(f=>({...f,bank:e.target.value})); } }}
+                      style={{width:"100%",padding:"9px 12px",borderRadius:10,border:`1.5px solid ${T.border}`,fontSize:13,color:(savingsForm.bank||newBankMode)?T.ink:T.muted,background:"#fff",outline:"none",fontFamily:"inherit"}}>
+                      <option value="">請選擇{savingsTab==="TWD"?"銀行":"帳戶"}</option>
+                      {bankList.map(b=><option key={b} value={b}>{b}</option>)}
+                      <option value="__new__">＋ 新增銀行…</option>
+                    </select>
+                    {newBankMode && (
+                      <input value={savingsForm.bank} onChange={e=>setSavingsForm(f=>({...f,bank:e.target.value}))}
+                        placeholder="輸入新的銀行／帳戶名稱"
+                        style={{width:"100%",marginTop:8,padding:"9px 12px",borderRadius:10,border:`1.5px solid ${T.border}`,fontSize:13,color:T.ink,background:"#fff",outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}
+                        autoFocus/>
                     )}
                   </div>
                   <div style={{marginBottom:12}}>
